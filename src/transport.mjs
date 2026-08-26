@@ -74,21 +74,17 @@ export class MirvaClient {
   }
 
   /**
-   * Call a controller method, redialing once if the connection has gone
-   * away. Sessions idle out server-side, so a long-lived MCP client will
-   * outlive its socket; a transparent retry keeps that invisible to the
-   * model rather than surfacing as a spurious tool failure.
+   * Call a controller method.
+   *
+   * Reconnection is NOT handled here: Deepkit's RpcClient re-establishes a
+   * dropped socket on the next call by itself, verified against a live
+   * server by disconnecting mid-session and calling again. A retry wrapper
+   * on top of that would never fire, so this stays a plain delegation and
+   * errors reaching the caller are real ones.
    */
   async call(method, ...args) {
-    try {
-      await this.ensureConnected();
-      return await this.remote[method](...args);
-    } catch (e) {
-      if (!isConnectionError(e)) throw e;
-      this.reset();
-      await this.ensureConnected();
-      return await this.remote[method](...args);
-    }
+    await this.ensureConnected();
+    return await this.remote[method](...args);
   }
 
   reset() {
@@ -102,11 +98,6 @@ export class MirvaClient {
   close() {
     this.reset();
   }
-}
-
-function isConnectionError(e) {
-  const message = String(e?.message ?? e);
-  return /offline|closed|socket|ECONNRESET|ECONNREFUSED|not connected/i.test(message);
 }
 
 /** The server's Deepkit RPC endpoint, the one its own web client dials. */
