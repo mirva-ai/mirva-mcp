@@ -89,6 +89,10 @@ function normalizeContent(result) {
   if (result?.type === 'image' && result.data) {
     return [{ type: 'image', data: result.data, mimeType: result.mimeType ?? 'image/png' }];
   }
+  // The server already answers in MCP's own content shape; passing it
+  // through unwrapped keeps the model from reading a JSON envelope around
+  // every value.
+  if (result?.type === 'text') return [{ type: 'text', text: result.text ?? '' }];
   if (typeof result === 'string') return [{ type: 'text', text: result }];
   return [{ type: 'text', text: JSON.stringify(result, null, 2) }];
 }

@@ -55,18 +55,22 @@ export class MirvaClient {
   constructor(options) {
     this.url = toWebSocketUrl(options.url);
     this.token = options.token;
-    this.controllerPath = options.controller ?? 'mirva/mcp';
+    this.controllerPath = options.controller ?? 'rpc-mcp';
     this.rpc = undefined;
     this.remote = undefined;
   }
 
-  /** The remote controller, connecting on first use. */
-  async controller() {
-    if (this.remote) return this.remote;
+  /**
+   * Connect if needed. The controller handle is NOT returned from an async
+   * function: it is a Proxy that answers every property, so awaiting it
+   * makes the runtime read `then` and the server rejects an action by that
+   * name. Callers take it from `this.remote` after awaiting this.
+   */
+  async ensureConnected() {
+    if (this.remote) return;
     this.rpc = new RpcClient(new WebSocketAdapter(this.url, this.token));
     await this.rpc.connect();
     this.remote = this.rpc.controller(this.controllerPath);
-    return this.remote;
   }
 
   /**
@@ -77,13 +81,13 @@ export class MirvaClient {
    */
   async call(method, ...args) {
     try {
-      const remote = await this.controller();
-      return await remote[method](...args);
+      await this.ensureConnected();
+      return await this.remote[method](...args);
     } catch (e) {
       if (!isConnectionError(e)) throw e;
       this.reset();
-      const remote = await this.controller();
-      return await remote[method](...args);
+      await this.ensureConnected();
+      return await this.remote[method](...args);
     }
   }
 
