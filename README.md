@@ -54,10 +54,6 @@ this server can do, it does **as you**; it grants no authority you do not
 already have, and takes none away. There is no separate agent identity and
 no elevated mode.
 
-## License
-
-MIT
-
 ## Testing
 
 `test/hard-cases.mjs` exercises the surface adversarially against a running
@@ -76,3 +72,7 @@ one account cannot read another's drawings or chats and that refusal is
 byte-identical to not-found — so the tools cannot be used to discover what
 exists. They are the cases worth keeping honest: removing the server's
 permission check makes them fail.
+
+## License
+
+MIT
