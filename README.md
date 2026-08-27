@@ -57,3 +57,22 @@ no elevated mode.
 ## License
 
 MIT
+
+## Testing
+
+`test/hard-cases.mjs` exercises the surface adversarially against a running
+server — malformed arguments, absent and unreadable ids, oversized and
+unicode input, bound clamping, concurrency, socket loss, and bad tokens.
+
+```bash
+MIRVA_URL=http://localhost:8080 \
+MIRVA_TOKEN=<account token> \
+MIRVA_OUTSIDER_TOKEN=<second account, no shared membership> \
+  node test/hard-cases.mjs
+```
+
+`MIRVA_OUTSIDER_TOKEN` enables the cross-account cases, which assert that
+one account cannot read another's drawings or chats and that refusal is
+byte-identical to not-found — so the tools cannot be used to discover what
+exists. They are the cases worth keeping honest: removing the server's
+permission check makes them fail.

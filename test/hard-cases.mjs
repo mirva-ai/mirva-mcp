@@ -173,6 +173,55 @@ async function main() {
     });
   }
 
+  // A second account with no membership anywhere. Cross-account refusal is
+  // the property that matters most, and asserting it against ids that exist
+  // for nobody proves nothing — these are the FIRST account's real drawings.
+  const outsiderToken = process.env.MIRVA_OUTSIDER_TOKEN;
+  if (outsiderToken) {
+    console.log('\n== cross-account ==');
+    const mine = await callTool(client, 'list_drawings', { limit: 3 });
+    const myIds = mine.ok ? parsed(mine.result).map(e => e.shortId) : [];
+    const outsider = new MirvaClient({ url, token: outsiderToken });
+
+    await check('another account cannot read my drawings', async () => {
+      assert(myIds.length > 0, 'no drawings to probe with');
+      for (const id of myIds) {
+        const r = await callTool(outsider, 'get_drawing', { shortId: id });
+        assert(!r.ok, `outsider read ${id}`);
+      }
+    });
+    await check('refusal is INDISTINGUISHABLE from not-found', async () => {
+      const denied = await callTool(outsider, 'get_drawing', { shortId: myIds[0] });
+      const absent = await callTool(outsider, 'get_drawing', { shortId: 'zzzzzzzzzz' });
+      assert(!denied.ok && !absent.ok, 'a probe succeeded');
+      assert(denied.error === absent.error, `differs: "${denied.error}" vs "${absent.error}"`);
+    });
+    await check('my drawings do not appear in another account listing', async () => {
+      const r = await callTool(outsider, 'list_drawings', { limit: 100 });
+      assert(r.ok, `listing failed: ${r.error}`);
+      const theirs = parsed(r.result).map(e => e.shortId);
+      const leaked = myIds.filter(id => theirs.includes(id));
+      assert(leaked.length === 0, `leaked: ${leaked.join(', ')}`);
+    });
+    await check('another account cannot read my chat channel', async () => {
+      assert(names.includes('create_ai_session'), 'chat tools absent — case did not run');
+      const session = await callTool(client, 'create_ai_session', {});
+      assert(session.ok, 'could not create a session to probe');
+      const channelName = parsed(session.result).channelName;
+      const r = await callTool(outsider, 'get_messages', { channelName });
+      if (r.ok) assert(parsed(r.result).length === 0, 'outsider read my session messages');
+    });
+    await check('another account cannot post to my chat channel', async () => {
+      assert(names.includes('create_ai_session'), 'chat tools absent — case did not run');
+      const session = await callTool(client, 'create_ai_session', {});
+      const channelName = parsed(session.result).channelName;
+      const r = await callTool(outsider, 'send_message', { channelName, message: 'intrusion' });
+      assert(!r.ok, 'outsider posted into my session');
+    });
+
+    outsider.close();
+  }
+
   console.log('\n== concurrency and recovery ==');
   await check('concurrent calls all resolve', async () => {
     const results = await Promise.all(
