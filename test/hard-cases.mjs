@@ -15,6 +15,9 @@ import { readFileSync, statSync } from 'fs';
 
 const url = process.env.MIRVA_URL || 'http://localhost:8080';
 const token = process.env.MIRVA_TOKEN || '';
+/** Board the composition cases read from. They only read and refuse — nothing
+ *  in this suite writes to it — so any board the account can see will do. */
+const BOARD = process.env.MIRVA_BOARD || '';
 if (!token) {
   console.error('MIRVA_TOKEN is required');
   process.exit(1);
@@ -178,6 +181,62 @@ async function main() {
     const r = await callTool(client, 'list_drawings', { limit: 'lots' });
     assert(!r.ok, 'non-numeric limit was accepted');
   });
+
+  if (!BOARD) {
+    console.log('\n== board composition ==  (skipped: set MIRVA_BOARD)');
+  } else {
+  console.log('\n== board composition ==');
+  // These tools write to a board, so every case here either refuses or
+  // cleans up after itself. A test that leaves debris on a shared board is
+  // worse than no test.
+  await check('list_board_elements refuses an unknown board', async () => {
+    const r = await callTool(client, 'list_board_elements', { boardId: 'zzzzzzzzzz' });
+    assert(!r.ok, 'an unknown board was listed');
+  });
+  await check('a region needs all four of x, y, w, h', async () => {
+    const r = await callTool(client, 'list_board_elements', { boardId: BOARD, x: 0, y: 0 });
+    assert(!r.ok, 'a half-specified region was accepted');
+  });
+  await check('an omitted region means the whole board', async () => {
+    const r = await callTool(client, 'list_board_elements', { boardId: BOARD });
+    assert(r.ok, `whole-board listing failed: ${r.error}`);
+    const body = parsed(r.result);
+    assert(Array.isArray(body.elementBounds), 'no elementBounds array');
+    assert(body.count === body.elementBounds.length, 'count disagrees with the array');
+  });
+  await check('a section needs a positive width and height', async () => {
+    const r = await callTool(client, 'create_section',
+      { boardId: BOARD, name: 'zero', x: 0, y: 0, w: 0, h: 100 });
+    assert(!r.ok, 'a zero-width section was created');
+  });
+  await check('place_card refuses a drawing that does not exist', async () => {
+    const r = await callTool(client, 'place_card',
+      { boardId: BOARD, drawingId: 'zzzzzzzzzz', x: 0, y: 0, w: 100 });
+    assert(!r.ok, 'a nonexistent drawing was placed');
+  });
+  await check('place_card refuses a non-positive width', async () => {
+    const r = await callTool(client, 'place_card',
+      { boardId: BOARD, drawingId: BOARD, x: 0, y: 0, w: 0 });
+    assert(!r.ok, 'a zero-width placement was accepted');
+  });
+  await check('move_board_object refuses an unknown layer', async () => {
+    const r = await callTool(client, 'move_board_object',
+      { boardId: BOARD, layerId: 999999, x: 0, y: 0 });
+    assert(!r.ok, 'an unknown layer was moved');
+  });
+  await check('add_note requires text', async () => {
+    const r = await callTool(client, 'add_note', { boardId: BOARD, x: 0, y: 0 });
+    assert(!r.ok, 'a note with no text was pinned');
+  });
+  await check('undo_agent_edits refuses an unknown message', async () => {
+    const r = await callTool(client, 'undo_agent_edits', { messageId: '000000000000000000000000' });
+    assert(!r.ok, 'an unknown message was undone');
+  });
+  await check('read_message_image refuses an unknown file', async () => {
+    const r = await callTool(client, 'read_message_image', { fileId: '000000000000000000000000' });
+    assert(!r.ok, 'an unknown fileId returned an image');
+  });
+  }
 
   console.log('\n== chat ==');
   if (names.includes('create_ai_session')) {

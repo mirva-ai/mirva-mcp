@@ -29,8 +29,23 @@ Nothing to install: MCP clients can run it on demand.
 
 Tools are provided by the server, not declared here, so the set matches
 whatever your server offers rather than whatever this package shipped with.
-Typically: list and inspect drawings, join one as a live participant,
-capture what is on the canvas, paint, and post to a drawing's chat.
+That is the point of the design: the capabilities belong to the product,
+and a client that declared its own would drift.
+
+What a current server offers, by area:
+
+- **Drawings** — list and inspect them, join one as a live participant,
+  capture what is on the canvas as a PNG.
+- **Painting** — create canvases and layers, stroke paths and fills,
+  compose images onto a canvas, and restack, copy, duplicate or remove
+  layers.
+- **Boards** — read what is on a board and where, draw named sections,
+  move a card or a document to a new rect, pin a sticky note, and write a
+  rich document.
+- **Working with the agent** — open a session, send a message with
+  reference images attached, read the reply along with the tools it ran,
+  the images it produced and the layers it added, fetch one of those
+  images, and undo a turn's board edits.
 
 ## How it works
 
@@ -64,8 +79,14 @@ unicode input, bound clamping, concurrency, socket loss, and bad tokens.
 MIRVA_URL=http://localhost:8080 \
 MIRVA_TOKEN=<account token> \
 MIRVA_OUTSIDER_TOKEN=<second account, no shared membership> \
+MIRVA_BOARD=<a board shortId the account can see> \
   node test/hard-cases.mjs
 ```
+
+`MIRVA_BOARD` enables the board-composition cases, which check that the
+board tools refuse an unknown board, a half-specified region, a
+zero-sized section, a nonexistent drawing and an unknown layer. They only
+read and refuse — nothing in the suite writes to the board you name.
 
 `MIRVA_OUTSIDER_TOKEN` enables the cross-account cases, which assert that
 one account cannot read another's drawings or chats and that refusal is
