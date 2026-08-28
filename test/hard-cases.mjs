@@ -11,6 +11,7 @@
  */
 
 import { MirvaClient } from '../src/transport.mjs';
+import { readFileSync, statSync } from 'fs';
 
 const url = process.env.MIRVA_URL || 'http://localhost:8080';
 const token = process.env.MIRVA_TOKEN || '';
@@ -23,9 +24,48 @@ let passed = 0;
 let failed = 0;
 const failures = [];
 
+/**
+ * Server-side error watch.
+ *
+ * A tool that answers "FAILED: ..." cleanly can still be sitting on an
+ * exception the server logged — a missing stub, a swallowed rejection. The
+ * call looks handled while the product is broken underneath, so the run
+ * also fails if the server logged an error while it was happening.
+ */
+const SERVER_LOG = process.env.MIRVA_WARN_LOG
+  || '/Users/rush/code/nexus-gitea/portal/data/logs/warn.' +
+     new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.log';
+
+function logSize() {
+  try {
+    return statSync(SERVER_LOG).size;
+  } catch {
+    return -1;
+  }
+}
+
+function logSince(offset) {
+  if (offset < 0) return '';
+  try {
+    const buf = readFileSync(SERVER_LOG);
+    return buf.slice(offset).toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
+/** Lines worth failing a run over, as opposed to routine warnings. */
+function serverErrors(text) {
+  return text.split('\n').filter(l =>
+    /TypeError|ReferenceError|is not a function|Unhandled|UnhandledPromiseRejection|Cannot read/.test(l));
+}
+
 async function check(name, fn) {
+  const before = logSize();
   try {
     await fn();
+    const errs = serverErrors(logSince(before));
+    if (errs.length) throw new Error(`server logged an error: ${errs[0].slice(0, 160)}`);
     passed++;
     console.log(`  ok    ${name}`);
   } catch (e) {
@@ -220,6 +260,38 @@ async function main() {
     });
 
     outsider.close();
+  }
+
+  if (names.includes('capture_drawing')) {
+    console.log('\n== drawing session ==');
+    const mine = await callTool(client, 'list_drawings', { limit: 5 });
+    const canvas = mine.ok ? parsed(mine.result).find(e => e.type === 'Drawing') : undefined;
+
+    await check('open_drawing reports a live session', async () => {
+      assert(canvas, 'no canvas to open');
+      const r = await callTool(client, 'open_drawing', { shortId: canvas.shortId });
+      assert(r.ok, `open failed: ${r.error}`);
+      const info = parsed(r.result);
+      assert(info.width > 0 && info.height > 0, 'no dimensions reported');
+      assert(Array.isArray(info.layers), 'no layers reported');
+    });
+
+    await check('capture_drawing returns real image bytes', async () => {
+      assert(canvas, 'no canvas to capture');
+      const r = await callTool(client, 'capture_drawing', { shortId: canvas.shortId });
+      assert(r.ok, `capture failed: ${r.error}`);
+      // The result must be an image, not a text explanation of one: reading
+      // the wrong field returned "no image" while the session was fine.
+      assert(r.result.type === 'image', `expected an image, got ${r.result.type}`);
+      assert((r.result.data?.length ?? 0) > 1000, `suspiciously small image: ${r.result.data?.length} bytes`);
+    });
+
+    await check('capturing a nonexistent layer explains itself', async () => {
+      assert(canvas, 'no canvas');
+      const r = await callTool(client, 'capture_drawing', { shortId: canvas.shortId, layerId: 999999 });
+      assert(!r.ok, 'a nonexistent layer captured successfully');
+      assert(/layer/i.test(r.error), `unhelpful reason: ${r.error}`);
+    });
   }
 
   console.log('\n== concurrency and recovery ==');
