@@ -85,6 +85,11 @@ It lists the whole board rather than a region on purpose. A region answers
 only what is inside it, and each of these faults is about something being
 somewhere you did not think to look.
 
+`npm run check-board -- <boardId> [<prefix>=<count> ...]` runs both board
+tools in one pass and exits non-zero if either fails. Run separately they
+tend to be run one at a time, which is how a fault in the other one
+survives.
+
 `tools/verify-claims.mjs` checks that a section still holds what it is
 supposed to. A section's name is a claim, and claims drift as work moves
 around.
