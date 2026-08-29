@@ -18,6 +18,7 @@
  *   MIRVA_URL=... MIRVA_TOKEN=... node tools/audit-board.mjs <boardId>
  */
 import { MirvaClient } from '../src/transport.mjs';
+import { contains, overlaps } from './board-geometry.mjs';
 
 const boardId = process.argv[2];
 if (!boardId) {
@@ -29,18 +30,6 @@ const client = new MirvaClient({
   url: process.env.MIRVA_URL || 'http://localhost:4000',
   token: process.env.MIRVA_TOKEN || '',
 });
-
-/** Two rects touch when they overlap on both axes. */
-function overlaps(a, b) {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-}
-
-/** A rect sits inside another when every edge is within it. */
-function contains(outer, inner) {
-  return inner.x >= outer.x && inner.y >= outer.y
-    && inner.x + inner.w <= outer.x + outer.w
-    && inner.y + inner.h <= outer.y + outer.h;
-}
 
 const timer = setTimeout(() => { console.error('TIMEOUT'); process.exit(2); }, 90000);
 try {
