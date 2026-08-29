@@ -9,8 +9,12 @@
  *   MIRVA_URL=... MIRVA_TOKEN=... node tools/verify-claims.mjs <boardId> \
  *     <sectionPrefix>=<count> [<sectionPrefix>=<count> ...]
  *
+ * A count on its own means everything the section holds. Prefix it with a
+ * type — canvas, document, sticky — to pin down one kind, which is what a
+ * section holding both a document and a card needs.
+ *
  * Example, for the Ember & Ash deck:
- *   node tools/verify-claims.mjs BLGdQyMgY3 09=2 10=36 11=12 12=4
+ *   node tools/verify-claims.mjs BLGdQyMgY3 04=document:2 10=36 11=12
  */
 import { MirvaClient } from '../src/transport.mjs';
 import { contains } from './board-geometry.mjs';
@@ -31,7 +35,10 @@ try {
   const raw = await client.call('callTool', 'list_board_elements', { boardId });
   const elements = JSON.parse(raw.text).elementBounds;
   const sections = elements.filter(e => e.type === 'section');
-  const cards = elements.filter(e => e.type === 'canvas');
+  // Everything a section can hold, not only cards: a spec section is its
+  // documents, and counting canvases alone reports it as correct however
+  // many of them have gone.
+  const contents = elements.filter(e => e.type !== 'section');
 
   let wrong = 0;
   let total = 0;
@@ -43,13 +50,25 @@ try {
       wrong++;
       continue;
     }
-    const held = cards.filter(c => contains(section, c)).length;
-    total += held;
-    const ok = held === Number(want);
+    const held = contents.filter(c => contains(section, c));
+    total += held.length;
+
+    // "12" counts everything; "canvas:12" or "document:2" counts one kind,
+    // which is how a section holding both is pinned down.
+    const [kind, count] = want.includes(':') ? want.split(':') : [null, want];
+    const matching = kind ? held.filter(c => c.type === kind) : held;
+    const ok = matching.length === Number(count);
     if (!ok) wrong++;
-    console.log(`  ${ok ? 'ok   ' : 'WRONG'} ${prefix} holds ${held}, expected ${want}`);
+
+    // "canvas" already ends in s; appending another gives "canvass".
+    const plural = n => (n === 1 ? '' : kind.endsWith('s') ? 'es' : 's');
+    const label = kind ? `${kind}${plural(matching.length)}` : 'items';
+    const breakdown = [...new Set(held.map(c => c.type))].sort()
+      .map(t => `${held.filter(c => c.type === t).length} ${t}`).join(', ');
+    console.log(`  ${ok ? 'ok   ' : 'WRONG'} ${prefix} holds ${matching.length} ${label}, `
+      + `expected ${count}${breakdown ? `  (${breakdown})` : ''}`);
   }
-  console.log(`  ${total} cards across the sections checked`);
+  console.log(`  ${total} items across the sections checked`);
 
   if (wrong) {
     console.log(`${wrong} claim(s) do not match the board`);

@@ -85,6 +85,20 @@ It lists the whole board rather than a region on purpose. A region answers
 only what is inside it, and each of these faults is about something being
 somewhere you did not think to look.
 
+`tools/verify-claims.mjs` checks that a section still holds what it is
+supposed to. A section's name is a claim, and claims drift as work moves
+around.
+
+```bash
+MIRVA_URL=http://localhost:8080 MIRVA_TOKEN=<token> \
+  node tools/verify-claims.mjs <boardId> 10=36 11=12 04=document:2
+```
+
+A bare count means everything the section holds; prefixing a type —
+`canvas`, `document`, `sticky` — pins down one kind, which is what a
+section holding both a document and a card needs. It exits non-zero when a
+claim does not match, so it can gate a script.
+
 ## Testing
 
 `npm test` runs the geometry behind that audit — seventeen cases covering
