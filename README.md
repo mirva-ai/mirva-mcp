@@ -40,8 +40,8 @@ What a current server offers, by area:
   compose images onto a canvas, and restack, copy, duplicate or remove
   layers.
 - **Boards** — read what is on a board and where, draw named sections,
-  move a card or a document to a new rect, pin a sticky note, and write a
-  rich document.
+  move a card, document or section to a new rect, pin a sticky note and
+  rewrite one, and write a rich document.
 - **Working with the agent** — open a session, send a message with
   reference images attached, read the reply along with the tools it ran,
   the images it produced and the layers it added, fetch one of those
@@ -69,7 +69,28 @@ this server can do, it does **as you**; it grants no authority you do not
 already have, and takes none away. There is no separate agent identity and
 no elevated mode.
 
+## Tools
+
+`tools/audit-board.mjs` reads a board and reports three faults that are
+hard to see by eye: a canvas referenced by more than one layer — a move
+that left its old layer behind — cards overlapping each other, and cards
+sitting outside every section.
+
+```bash
+MIRVA_URL=http://localhost:8080 MIRVA_TOKEN=<token> \
+  node tools/audit-board.mjs <boardId>
+```
+
+It lists the whole board rather than a region on purpose. A region answers
+only what is inside it, and each of these faults is about something being
+somewhere you did not think to look.
+
 ## Testing
+
+`npm test` runs the geometry behind that audit — seventeen cases covering
+the pairs that would otherwise pass falsely, such as cards that abut
+without overlapping, and a card overhanging the section it looks like it is
+in. It needs no server.
 
 `test/hard-cases.mjs` exercises the surface adversarially against a running
 server — malformed arguments, absent and unreadable ids, oversized and
