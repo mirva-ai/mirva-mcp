@@ -7,7 +7,7 @@
  *
  * Run: node test/board-geometry.mjs
  */
-import { contains, overlaps } from '../tools/board-geometry.mjs';
+import { contains, groupByDrawing, overlaps } from '../tools/board-geometry.mjs';
 
 let failures = 0;
 
@@ -64,6 +64,43 @@ check('one unit of overhang is outside',
 // Containment is directional; a section is not inside the card it holds.
 check('containment is not symmetric',
   contains(card(32100, 14900), section), false);
+
+console.log('groupByDrawing');
+// Both reference faults are read from this grouping, so what it leaves out
+// matters as much as what it collects.
+const layer = (id, drawingId, x = 0) => ({ id, drawingId, x, y: 0, w: 560, h: 710, type: 'canvas' });
+
+const grouped = groupByDrawing([
+  layer(1, 'aaa'), layer(2, 'bbb', 700), layer(3, 'aaa', 1400),
+]);
+check('layers are grouped by the entity they show', grouped.size, 2);
+check('a card moved without its old layer removed shows two',
+  grouped.get('aaa').length, 2);
+check('a card placed once shows one', grouped.get('bbb').length, 1);
+
+// A section is a board object in its own right, not a view of an entity.
+// Counting it here would put an id in the map that nothing can resolve,
+// which the removed-entity check would then report on every clean board.
+const withFurniture = groupByDrawing([
+  layer(1, 'aaa'),
+  { id: 2, type: 'section', name: '10 — Pip Cards', x: 0, y: 0, w: 5000, h: 2000 },
+  { id: 3, type: 'note', text: 'colour note', x: 100, y: 100, w: 300, h: 200 },
+]);
+check('sections and notes carry no reference and are skipped',
+  withFurniture.size, 1);
+
+// Documents are referenced exactly as canvases are, and it was a document
+// that a move most recently binned — so the grouping must not be limited
+// to cards the way the overlap check is.
+const withDocument = groupByDrawing([
+  layer(1, 'aaa'),
+  { id: 2, type: 'document', drawingId: 'ddd', x: 0, y: 0, w: 900, h: 1200 },
+]);
+check('a document is grouped like any other reference', withDocument.size, 2);
+check('and it is found under its own id',
+  withDocument.get('ddd').length, 1);
+
+check('an empty board groups nothing', groupByDrawing([]).size, 0);
 
 console.log();
 if (failures) {

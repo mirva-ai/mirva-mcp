@@ -28,3 +28,21 @@ export function contains(outer, inner) {
     && inner.x + inner.w <= outer.x + outer.w
     && inner.y + inner.h <= outer.y + outer.h;
 }
+
+/**
+ * Layers grouped by the entity each one shows, keyed by entity id.
+ *
+ * Sections and notes carry no reference and are left out. Both reference
+ * faults are read from this: more than one layer under an id means a stale
+ * layer survived a move, and an id no layer resolves means the entity was
+ * binned while still on the board.
+ */
+export function groupByDrawing(elements) {
+  const byDrawing = new Map();
+  for (const e of elements) {
+    if (!e.drawingId) continue;
+    if (!byDrawing.has(e.drawingId)) byDrawing.set(e.drawingId, []);
+    byDrawing.get(e.drawingId).push(e);
+  }
+  return byDrawing;
+}
