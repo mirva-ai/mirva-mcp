@@ -23,7 +23,7 @@
  *   MIRVA_URL=... MIRVA_TOKEN=... node tools/audit-board.mjs <boardId>
  */
 import { MirvaClient } from '../src/transport.mjs';
-import { contains, groupByDrawing, overlaps } from './board-geometry.mjs';
+import { contains, groupByDrawing, isInfrastructureFailure, overlaps } from './board-geometry.mjs';
 
 const boardId = process.argv[2];
 if (!boardId) {
@@ -63,7 +63,12 @@ try {
   for (const [drawingId, layers] of byDrawing) {
     try {
       await client.call('callTool', 'get_drawing', { shortId: drawingId });
-    } catch {
+    } catch (e) {
+      // Only a refusal about this entity says anything about the board. A
+      // worker outage refuses every call alike, and reading that as "every
+      // card was deleted" turns an infrastructure failure into a page of
+      // false findings about the board.
+      if (isInfrastructureFailure(e)) throw e;
       const at = layers.map(l => `#${l.id} "${l.name}"`).join(' ');
       problems.push(`${drawingId} is referenced by ${layers.length} layer(s) but no longer resolves: ${at}`);
     }
@@ -87,6 +92,12 @@ try {
   for (const p of problems) console.log(`  ${p}`);
   console.log(`${problems.length} problem(s)`);
   process.exit(1);
+} catch (e) {
+  // Exit 2 is "the audit could not run", distinct from exit 1's "the board
+  // has a problem". Both once exited non-zero the same way, so a worker
+  // that went away read as a failing board.
+  console.error(`audit could not complete: ${e?.message ?? e}`);
+  process.exit(2);
 } finally {
   clearTimeout(timer);
   client.close();

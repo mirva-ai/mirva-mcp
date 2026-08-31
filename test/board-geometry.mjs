@@ -7,7 +7,7 @@
  *
  * Run: node test/board-geometry.mjs
  */
-import { contains, groupByDrawing, overlaps } from '../tools/board-geometry.mjs';
+import { contains, groupByDrawing, isInfrastructureFailure, overlaps } from '../tools/board-geometry.mjs';
 
 let failures = 0;
 
@@ -101,6 +101,30 @@ check('and it is found under its own id',
   withDocument.get('ddd').length, 1);
 
 check('an empty board groups nothing', groupByDrawing([]).size, 0);
+
+console.log('isInfrastructureFailure');
+// The audit asks the product about every referenced entity and reads a
+// refusal as "this entity is gone". When the product itself is unreachable
+// every call refuses alike, so without this the audit reports a healthy
+// board as one where every card has been deleted.
+const realOutage = Object.assign(new Error('No hands workers available'), { name: 'RpcError' });
+check('the outage that actually crashed the audit is recognised',
+  isInfrastructureFailure(realOutage), true);
+check('a render deadline is infrastructure, not a finding',
+  isInfrastructureFailure(new Error('hands capture_drawing passed its 25000ms deadline — its outcome is unknown')), true);
+check('a worker task timeout is infrastructure',
+  isInfrastructureFailure(new Error('hands task timed out (capture_drawing)')), true);
+check('a refused connection is infrastructure',
+  isInfrastructureFailure(new Error('connect ECONNREFUSED 127.0.0.1:4000')), true);
+
+// The other half matters as much: a real answer about one entity must stay
+// a finding, or the audit goes quiet about the fault it exists to catch.
+check('a missing drawing stays a board finding',
+  isInfrastructureFailure(new Error('Drawing not found')), false);
+check('a permission refusal stays a board finding',
+  isInfrastructureFailure(new Error('You do not have access to this drawing')), false);
+check('an empty error is not assumed to be infrastructure',
+  isInfrastructureFailure(undefined), false);
 
 console.log();
 if (failures) {

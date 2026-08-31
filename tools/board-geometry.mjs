@@ -46,3 +46,15 @@ export function groupByDrawing(elements) {
   }
   return byDrawing;
 }
+
+/**
+ * Whether a failure is the product being unreachable rather than an answer
+ * about the board. These arrive identically to a per-entity refusal, so
+ * without the distinction an outage is indistinguishable from a board full
+ * of deleted cards.
+ */
+export function isInfrastructureFailure(e) {
+  const text = `${e?.name ?? ''} ${e?.message ?? e}`;
+  return /HandsUnavailable|No hands workers|timed out|deadline|ECONNREFUSED|socket hang up/i.test(text);
+}
+
