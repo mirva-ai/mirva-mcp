@@ -75,6 +75,12 @@ try {
     process.exit(1);
   }
   console.log('every claim matches the board');
+} catch (e) {
+  // Exit 2 is "the claims could not be checked", distinct from exit 1's
+  // "the claims do not match". A worker that went away otherwise escaped
+  // uncaught and exited 1, which reads as a board that has drifted.
+  console.error(`claims could not be checked: ${e?.message ?? e}`);
+  process.exit(2);
 } finally {
   clearTimeout(timer);
   client.close();
