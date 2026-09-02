@@ -15,25 +15,36 @@
  * Options via env:
  *   FULL=1        print the whole result rather than the first lines
  *   RAW=1         print the tool's own payload with the envelopes removed
+ *   ARGS_FILE=... read the arguments from a file, for payloads too large
+ *                 for a command line (image attachments are base64)
  *   IMAGE_OUT=... where an image result is written (default /tmp/capture.png)
  */
-import { writeFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { MirvaClient } from '../src/transport.mjs';
 
 const [tool, argsJson] = process.argv.slice(2);
 if (!tool) {
-  console.error("usage: node tools/call.mjs <tool> '<json args>'");
+  console.error("usage: node tools/call.mjs <tool> '<json args>'   (or ARGS_FILE=path)");
   process.exit(2);
 }
 
+// Arguments come from a file when ARGS_FILE names one. An attachment is
+// base64, so a message carrying two card images is megabytes of argument —
+// past what a command line accepts, which fails as E2BIG before the tool is
+// ever called.
+const source = process.env.ARGS_FILE
+  ? readFileSync(process.env.ARGS_FILE, 'utf8')
+  : argsJson;
+
 let args = {};
-if (argsJson) {
+if (source) {
   try {
-    args = JSON.parse(argsJson);
+    args = JSON.parse(source);
   } catch (e) {
     // A malformed argument string is the caller's own quoting, and saying so
     // beats a stack trace from inside the transport.
-    console.error(`arguments are not valid JSON: ${e.message}`);
+    const where = process.env.ARGS_FILE ? process.env.ARGS_FILE : 'the argument';
+    console.error(`arguments are not valid JSON (${where}): ${e.message}`);
     process.exit(2);
   }
 }
