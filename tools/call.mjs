@@ -14,6 +14,7 @@
  *
  * Options via env:
  *   FULL=1        print the whole result rather than the first lines
+ *   RAW=1         print the tool's own payload with the envelopes removed
  *   IMAGE_OUT=... where an image result is written (default /tmp/capture.png)
  */
 import { writeFileSync } from 'fs';
@@ -51,6 +52,22 @@ try {
     const bytes = Buffer.from(result.data, 'base64');
     writeFileSync(out, bytes);
     console.log(`IMAGE -> ${out} (${Math.round(bytes.length / 1024)}KB)`);
+  } else if (process.env.RAW) {
+    // A tool's own payload, with the transport's envelopes taken off. Most
+    // results arrive as {type, text} where text is itself JSON, so reading
+    // one means unwrapping twice — and a caller that unwraps once feeds an
+    // envelope back into the next call. Writing a document that way nested
+    // the whole envelope inside the document it was meant to edit.
+    const inner = typeof result?.text === 'string' ? result.text : null;
+    let payload = result;
+    if (inner !== null) {
+      try {
+        payload = JSON.parse(inner);
+      } catch {
+        payload = inner; // plain text, not JSON — hand it back as it came
+      }
+    }
+    console.log(typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2));
   } else {
     const text = JSON.stringify(result, null, 2);
     console.log(process.env.FULL ? text : text.slice(0, 2000));
