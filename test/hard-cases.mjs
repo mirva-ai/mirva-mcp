@@ -8,6 +8,10 @@
  * inert.
  *
  *   MIRVA_URL=http://localhost:8080 MIRVA_TOKEN=... node test/hard-cases.mjs
+ *
+ * Optional second accounts: MIRVA_OUTSIDER_TOKEN (no membership anywhere) and
+ * MIRVA_VIEWER_TOKEN (a member of MIRVA_BOARD's team whose role carries view
+ * and comment permissions but not CanDrawOnEntities).
  */
 
 import { MirvaClient } from '../src/transport.mjs';
@@ -319,6 +323,56 @@ async function main() {
     });
 
     outsider.close();
+  }
+
+  // A second account that CAN see the first account's board but holds a role
+  // without CanDrawOnEntities. Reads must answer; every mutation must refuse,
+  // and say why — this caller already knows the drawing exists. The document
+  // write is the case that matters most: it never reaches the drawing socket,
+  // so this gate is the only one it has.
+  const viewerToken = process.env.MIRVA_VIEWER_TOKEN;
+  if (viewerToken && BOARD) {
+    console.log('\n== view-only collaborator ==');
+    const viewer = new MirvaClient({ url, token: viewerToken });
+    const EDIT_REFUSAL = 'You can view this drawing but not edit it';
+
+    await check('a viewer can read the board', async () => {
+      const r = await callTool(viewer, 'get_drawing', { shortId: BOARD });
+      assert(r.ok, `viewer could not read the board: ${r.error}`);
+    });
+    const elements = await callTool(viewer, 'list_board_elements', { boardId: BOARD });
+    const docs = elements.ok ? parsed(elements.result).elementBounds.filter(e => e.type === 'document') : [];
+    const canvases = elements.ok ? parsed(elements.result).elementBounds.filter(e => e.type === 'canvas') : [];
+    await check('a viewer can read a document on it', async () => {
+      assert(docs.length > 0, 'no document on the board to read');
+      const r = await callTool(viewer, 'read_document', { documentId: docs[0].drawingId });
+      assert(r.ok, `viewer could not read the document: ${r.error}`);
+    });
+    await check('a viewer cannot overwrite a document', async () => {
+      assert(docs.length > 0, 'no document on the board to probe');
+      const r = await callTool(viewer, 'write_document', { boardId: BOARD, documentId: docs[0].drawingId, content: '# intrusion' });
+      assert(!r.ok, 'viewer overwrote a document');
+      assert(r.error.includes(EDIT_REFUSAL), `refusal did not name the missing permission: "${r.error}"`);
+    });
+    for (const [tool, args] of [
+      ['create_section', { boardId: BOARD, name: 'intrusion', x: 0, y: 0, w: 100, h: 100 }],
+      ['add_note', { boardId: BOARD, text: 'intrusion', x: 0, y: 0 }],
+      ['remove_layers', { drawingId: BOARD, layerIds: [1] }],
+      ['create_canvas', { boardId: BOARD, name: 'intrusion', width: 64, height: 64 }],
+    ]) {
+      await check(`a viewer cannot ${tool}`, async () => {
+        const r = await callTool(viewer, tool, args);
+        assert(!r.ok, `viewer ran ${tool}`);
+        assert(r.error.includes(EDIT_REFUSAL), `${tool}: "${r.error}"`);
+      });
+    }
+    await check('a viewer cannot draw on a canvas of the board', async () => {
+      assert(canvases.length > 0, 'no canvas on the board to probe');
+      const r = await callTool(viewer, 'draw_shapes', { drawingId: canvases[0].drawingId, layerId: 1, shapes: [{ kind: 'line', x1: 0, y1: 0, x2: 1, y2: 1 }] });
+      assert(!r.ok, 'viewer drew on a canvas');
+      assert(r.error.includes(EDIT_REFUSAL), `draw_shapes: "${r.error}"`);
+    });
+    viewer.close();
   }
 
   if (names.includes('capture_drawing')) {
