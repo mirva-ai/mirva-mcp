@@ -151,6 +151,31 @@ check('every section claimed leaves nothing listed',
 check('a prefix matches from the start of the name',
   unclaimedOf(['10 — Pip Cards'], ['1=36']).length, 0);
 
+console.log('a passing check can still be partial');
+// The runner printed only a check's last line, so a caveat from a check
+// that passed never reached it: "13 sections carry no claim" was written
+// to make a gap visible and was then swallowed by the tool people run.
+const caveat = /carry no claim|not captured|too few to judge|could not/;
+check('an unclaimed-section line is surfaced',
+  caveat.test('  13 section(s) carry no claim and were not counted:'), true);
+check('a too-few-to-judge line is surfaced',
+  caveat.test('  --   ace black: 2 cards, median 22.3% (too few to judge)'), true);
+check('an ordinary pass line is not repeated',
+  caveat.test('every claim matches the board'), false);
+check('a fault line is left to the failure path',
+  caveat.test('WRONG 10 holds 36 items, expected 35'), false);
+
+console.log('stored claims');
+// The counts were retyped every round, which is why only the deck sections
+// ever got claimed. A comment or blank line in the file is not a claim.
+const parseClaims = text => text.split('\n')
+  .map(line => line.split('#')[0].trim())
+  .filter(Boolean);
+check('comments and blanks are dropped',
+  parseClaims('# note\n\n10=36\n11=12  # trailing\n').length, 2);
+check('a trailing comment does not corrupt its claim',
+  parseClaims('11=12  # trailing')[0], '11=12');
+
 console.log();
 if (failures) {
   console.log(`${failures} failed`);

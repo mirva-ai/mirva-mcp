@@ -10,14 +10,30 @@
  *   MIRVA_URL=... MIRVA_TOKEN=... node tools/check-board.mjs <boardId> \
  *     [<sectionPrefix>=<count> ...]
  *
- * With no expectations it runs the audit alone.
+ * Claims given on the command line win. With none, `boards/<boardId>.claims`
+ * is used if it exists — the counts were retyped every round otherwise, and
+ * in practice only the deck sections got claimed while the rest went
+ * uncounted. With neither it runs the audit alone.
  */
 import { spawn } from 'child_process';
+import { existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const [boardId, ...claims] = process.argv.slice(2);
+const [boardId, ...given] = process.argv.slice(2);
+
+/** Claims recorded for a board, ignoring comments and blank lines. */
+function storedClaims(id) {
+  const path = join(HERE, '..', 'boards', `${id}.claims`);
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .map(line => line.split('#')[0].trim())
+    .filter(Boolean);
+}
+
+const claims = given.length ? given : storedClaims(boardId);
 if (!boardId) {
   console.error('usage: node tools/check-board.mjs <boardId> [<prefix>=<count> ...]');
   process.exit(2);
@@ -46,6 +62,15 @@ for (const [name, script, args] of checks) {
   const lines = output.trim().split('\n').filter(l => l.trim());
   if (code === 0) {
     console.log(`  ok   ${name.padEnd(15)} ${lines[lines.length - 1]}`);
+    // A check can pass and still say what it did not cover. Printing only
+    // the last line dropped exactly that: "13 sections carry no claim"
+    // never reached the runner people actually use, so the gap it was
+    // written to expose stayed invisible.
+    for (const line of lines) {
+      if (/carry no claim|not captured|too few to judge|could not/.test(line)) {
+        console.log(`         ${line.trim()}`);
+      }
+    }
   } else if (code === 2) {
     // The check could not run at all. Reporting that as a failing board
     // sends the reader after a fault that nothing has established.
