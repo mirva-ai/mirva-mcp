@@ -126,6 +126,31 @@ check('a permission refusal stays a board finding',
 check('an empty error is not assumed to be infrastructure',
   isInfrastructureFailure(undefined), false);
 
+console.log('unclaimed sections');
+// A section nobody names is a section nobody counts. Eight of this board's
+// fourteen had never been claimed, and a card lost from any of them would
+// have gone on reporting a clean run — the count was right about what it
+// checked and silent about what it did not.
+const unclaimedOf = (sectionNames, pairs) => {
+  const named = pairs.map(p => p.split('=')[0]);
+  return sectionNames.filter(name => !named.some(prefix => name.startsWith(prefix)));
+};
+
+check('a section with no claim is listed',
+  unclaimedOf(['01 — Art Direction', '10 — Pip Cards'], ['10=36']).length, 1);
+check('a section with a claim is not listed',
+  unclaimedOf(['10 — Pip Cards'], ['10=36']).length, 0);
+// A section can carry two claims — one per kind — and naming it once for
+// canvases must not leave it reported as unclaimed.
+check('two claims on one section still count as claimed',
+  unclaimedOf(['01 — Art Direction'], ['01=canvas:1', '01=document:1']).length, 0);
+check('every section claimed leaves nothing listed',
+  unclaimedOf(['01 — Art', '02 — Cast'], ['01=canvas:1', '02=canvas:2']).length, 0);
+// The prefix is matched against the start of the name, so a claim for "1"
+// must not silently satisfy "10", "11" and the rest.
+check('a prefix matches from the start of the name',
+  unclaimedOf(['10 — Pip Cards'], ['1=36']).length, 0);
+
 console.log();
 if (failures) {
   console.log(`${failures} failed`);

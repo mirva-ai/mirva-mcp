@@ -70,6 +70,21 @@ try {
   }
   console.log(`  ${total} items across the sections checked`);
 
+  // A section nobody names is a section nobody counts. Eight of this
+  // board's fourteen had never been claimed, so a card lost from any of
+  // them would have gone on reporting a clean run. They are listed rather
+  // than failed: not naming a section is a gap in what was asked for, not
+  // a fault in the board.
+  const named = pairs.map(p => p.split('=')[0]);
+  const unclaimed = sections
+    .map(s => (s.name || ''))
+    .filter(name => !named.some(prefix => name.startsWith(prefix)))
+    .sort();
+  if (unclaimed.length) {
+    console.log(`  ${unclaimed.length} section(s) carry no claim and were not counted:`);
+    for (const name of unclaimed) console.log(`     ${name.slice(0, 60)}`);
+  }
+
   if (wrong) {
     console.log(`${wrong} claim(s) do not match the board`);
     process.exit(1);
