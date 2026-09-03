@@ -15,15 +15,16 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { MirvaClient } from './transport.mjs';
+import { credentialsFromEnv, MirvaClient } from './transport.mjs';
 
 const url = process.env.MIRVA_URL || 'https://mirva.ai';
-const token = process.env.MIRVA_TOKEN || '';
+const credentials = credentialsFromEnv();
 
 function usage(message) {
   console.error(`mirva-mcp: ${message}
 
-  MIRVA_TOKEN   session token for the account to act as (required)
+  MIRVA_API_KEY API key for the account to act as (from its API page; preferred)
+  MIRVA_TOKEN   session token, as an alternative to an API key
   MIRVA_URL     server origin (default https://mirva.ai)
 
 Configure in an MCP client, e.g. .mcp.json:
@@ -33,7 +34,7 @@ Configure in an MCP client, e.g. .mcp.json:
       "mirva": {
         "command": "npx",
         "args": ["-y", "mirva-mcp"],
-        "env": { "MIRVA_TOKEN": "..." }
+        "env": { "MIRVA_API_KEY": "..." }
       }
     }
   }
@@ -42,9 +43,9 @@ Configure in an MCP client, e.g. .mcp.json:
 }
 
 async function main() {
-  if (!token) usage('MIRVA_TOKEN is required');
+  if (!credentials.apiKey && !credentials.token) usage('MIRVA_API_KEY (or MIRVA_TOKEN) is required');
 
-  const client = new MirvaClient({ url, token });
+  const client = new MirvaClient({ url, ...credentials });
   const server = new Server(
     { name: 'mirva', version: '0.1.0' },
     { capabilities: { tools: {} } },

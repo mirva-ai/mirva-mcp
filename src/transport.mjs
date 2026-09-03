@@ -13,17 +13,19 @@ import WebSocket from 'ws';
 class WebSocketAdapter {
   /**
    * @param {string} url  ws:// or wss:// endpoint
-   * @param {string} token  session token, sent as the AUTH_TOKEN cookie —
-   *   the same credential a browser session carries
+   * @param {{ token?: string, apiKey?: string }} credentials  one of: a session
+   *   token, sent as the AUTH_TOKEN cookie a browser session carries; or an
+   *   API key, sent as a bearer credential the way the public API takes it
    */
-  constructor(url, token) {
+  constructor(url, credentials) {
     this.url = url;
-    this.token = token;
+    this.credentials = credentials;
   }
 
   async connect(connection) {
+    const { token, apiKey } = this.credentials;
     const socket = new WebSocket(this.url, {
-      headers: { Cookie: `AUTH_TOKEN=${this.token}` },
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : { Cookie: `AUTH_TOKEN=${token}` },
     });
     socket.binaryType = 'arraybuffer';
 
@@ -50,11 +52,12 @@ class WebSocketAdapter {
  */
 export class MirvaClient {
   /**
-   * @param {{ url: string, token: string, controller?: string }} options
+   * @param {{ url: string, token?: string, apiKey?: string, controller?: string }} options
+   *   Exactly one credential: `apiKey` is preferred when both are given.
    */
   constructor(options) {
     this.url = toWebSocketUrl(options.url);
-    this.token = options.token;
+    this.credentials = { token: options.token, apiKey: options.apiKey };
     this.controllerPath = options.controller ?? 'rpc-mcp';
     this.rpc = undefined;
     this.remote = undefined;
@@ -68,7 +71,7 @@ export class MirvaClient {
    */
   async ensureConnected() {
     if (this.remote) return;
-    this.rpc = new RpcClient(new WebSocketAdapter(this.url, this.token));
+    this.rpc = new RpcClient(new WebSocketAdapter(this.url, this.credentials));
     await this.rpc.connect();
     this.remote = this.rpc.controller(this.controllerPath);
   }
@@ -107,4 +110,15 @@ const RPC_PATH = '/api/teams/rpc';
 function toWebSocketUrl(url) {
   const normalized = url.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:').replace(/\/$/, '');
   return normalized.endsWith(RPC_PATH) ? normalized : `${normalized}${RPC_PATH}`;
+}
+
+/**
+ * The credential the environment configures: MIRVA_API_KEY (an API key from
+ * the account's API page — revocable, and the one to use) or MIRVA_TOKEN (a
+ * session token). Returns an empty object when neither is set.
+ */
+export function credentialsFromEnv(env = process.env) {
+  if (env.MIRVA_API_KEY) return { apiKey: env.MIRVA_API_KEY };
+  if (env.MIRVA_TOKEN) return { token: env.MIRVA_TOKEN };
+  return {};
 }

@@ -16,7 +16,7 @@
  * Example, for the Ember & Ash deck:
  *   node tools/verify-claims.mjs BLGdQyMgY3 04=document:2 10=36 11=12
  */
-import { MirvaClient } from '../src/transport.mjs';
+import { credentialsFromEnv, MirvaClient } from '../src/transport.mjs';
 import { contains } from './board-geometry.mjs';
 
 const [boardId, ...pairs] = process.argv.slice(2);
@@ -27,7 +27,7 @@ if (!boardId || !pairs.length) {
 
 const client = new MirvaClient({
   url: process.env.MIRVA_URL || 'http://localhost:4000',
-  token: process.env.MIRVA_TOKEN || '',
+  ...credentialsFromEnv(),
 });
 
 const timer = setTimeout(() => { console.error('TIMEOUT'); process.exit(2); }, 90000);

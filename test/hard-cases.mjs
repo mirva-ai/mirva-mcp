@@ -14,16 +14,16 @@
  * and comment permissions but not CanDrawOnEntities).
  */
 
-import { MirvaClient } from '../src/transport.mjs';
+import { credentialsFromEnv, MirvaClient } from '../src/transport.mjs';
 import { readFileSync, statSync } from 'fs';
 
 const url = process.env.MIRVA_URL || 'http://localhost:8080';
-const token = process.env.MIRVA_TOKEN || '';
+const credentials = credentialsFromEnv();
 /** Board the composition cases read from. They only read and refuse — nothing
  *  in this suite writes to it — so any board the account can see will do. */
 const BOARD = process.env.MIRVA_BOARD || '';
-if (!token) {
-  console.error('MIRVA_TOKEN is required');
+if (!credentials.apiKey && !credentials.token) {
+  console.error('MIRVA_API_KEY or MIRVA_TOKEN is required');
   process.exit(1);
 }
 
@@ -101,7 +101,7 @@ function parsed(result) {
 }
 
 async function main() {
-  const client = new MirvaClient({ url, token });
+  const client = new MirvaClient({ url, ...credentials });
 
   console.log('\n== surface ==');
   const tools = await client.call('listTools');

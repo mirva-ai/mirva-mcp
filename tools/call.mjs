@@ -20,7 +20,7 @@
  *   IMAGE_OUT=... where an image result is written (default /tmp/capture.png)
  */
 import { readFileSync, writeFileSync } from 'fs';
-import { MirvaClient } from '../src/transport.mjs';
+import { credentialsFromEnv, MirvaClient } from '../src/transport.mjs';
 
 const [tool, argsJson] = process.argv.slice(2);
 if (!tool) {
@@ -51,7 +51,7 @@ if (source) {
 
 const client = new MirvaClient({
   url: process.env.MIRVA_URL || 'http://localhost:4000',
-  token: process.env.MIRVA_TOKEN || '',
+  ...credentialsFromEnv(),
 });
 
 const timer = setTimeout(() => { console.error('TIMEOUT'); process.exit(2); }, 85000);

@@ -14,7 +14,7 @@ Nothing to install: MCP clients can run it on demand.
     "mirva": {
       "command": "npx",
       "args": ["-y", "mirva-mcp"],
-      "env": { "MIRVA_TOKEN": "your-session-token" }
+      "env": { "MIRVA_API_KEY": "your-api-key" }
     }
   }
 }
@@ -22,7 +22,8 @@ Nothing to install: MCP clients can run it on demand.
 
 | Variable | Required | Default | |
 |---|---|---|---|
-| `MIRVA_TOKEN` | yes | — | Session token for the account to act as |
+| `MIRVA_API_KEY` | one of | — | API key for the account to act as, from its API page. Revocable there; the credential to use. |
+| `MIRVA_TOKEN` | one of | — | Session token, as an alternative when no API key is available |
 | `MIRVA_URL` | no | `https://mirva.ai` | Server origin |
 
 ## What it does
@@ -55,7 +56,7 @@ MCP client ──stdio──> mirva-mcp ──Deepkit RPC / WebSocket──> Mir
 
 This package is a protocol translator and nothing more. Every operation
 runs server-side in a session that acts with the authority of the account
-whose token you configured — the same permission checks that guard that
+whose credential you configured — the same permission checks that guard that
 user in the web app, because it is the same API. Nothing here renders,
 stores, or bypasses anything.
 
@@ -64,7 +65,9 @@ step, so `npx` works anywhere Node 20+ does.
 
 ## Security
 
-The token is a full session credential — treat it like a password. Anything
+Either credential acts as the account — treat it like a password. An API key
+can be revoked from the account's API page without touching the session;
+a session token cannot, which is why the key is the one to hand out. Anything
 this server can do, it does **as you**; it grants no authority you do not
 already have, and takes none away. There is no separate agent identity and
 no elevated mode.

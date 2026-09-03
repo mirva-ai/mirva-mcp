@@ -22,7 +22,7 @@
  * Usage:
  *   MIRVA_URL=... MIRVA_TOKEN=... node tools/audit-board.mjs <boardId>
  */
-import { MirvaClient } from '../src/transport.mjs';
+import { credentialsFromEnv, MirvaClient } from '../src/transport.mjs';
 import { contains, groupByDrawing, isInfrastructureFailure, overlaps } from './board-geometry.mjs';
 
 const boardId = process.argv[2];
@@ -33,7 +33,7 @@ if (!boardId) {
 
 const client = new MirvaClient({
   url: process.env.MIRVA_URL || 'http://localhost:4000',
-  token: process.env.MIRVA_TOKEN || '',
+  ...credentialsFromEnv(),
 });
 
 const timer = setTimeout(() => { console.error('TIMEOUT'); process.exit(2); }, 90000);
