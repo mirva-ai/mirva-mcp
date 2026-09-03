@@ -48,11 +48,34 @@ async function main() {
   const client = new MirvaClient({ url, ...credentials });
   const server = new Server(
     { name: 'mirva', version: '0.1.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: { listChanged: true } } },
   );
+
+  // The server builds its tool set once per build, so the list this
+  // process served can go stale only across a reconnect — after a deploy.
+  // Rather than a synthetic change event, the server's digest of its set is
+  // compared, after a call and at most once per interval, to the digest of
+  // the list last served; a difference is announced, and the client
+  // re-lists. A server without the digest action is simply never announced.
+  let servedDigest;
+  let lastDigestCheck = 0;
+  const DIGEST_CHECK_INTERVAL_MS = 30_000;
+  const announceIfChanged = async () => {
+    if (!servedDigest || Date.now() - lastDigestCheck < DIGEST_CHECK_INTERVAL_MS) return;
+    lastDigestCheck = Date.now();
+    try {
+      const current = await client.call('toolsDigest');
+      if (current && current !== servedDigest) {
+        servedDigest = undefined;
+        await server.sendToolListChanged();
+      }
+    } catch { /* an older server, or a dropped socket: nothing to announce */ }
+  };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = await client.call('listTools');
+    try { servedDigest = await client.call('toolsDigest'); } catch { servedDigest = undefined; }
+    lastDigestCheck = Date.now();
     return { tools: tools ?? [] };
   });
 
@@ -60,6 +83,7 @@ async function main() {
     const { name, arguments: args } = request.params;
     try {
       const result = await client.call('callTool', name, args ?? {});
+      void announceIfChanged();
       return { content: normalizeContent(result) };
     } catch (e) {
       // A failed call reports its reason to the model instead of killing the
