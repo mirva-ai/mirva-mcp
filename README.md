@@ -80,32 +80,13 @@ that left its old layer behind — cards overlapping each other, and cards
 sitting outside every section.
 
 ```bash
-MIRVA_URL=http://localhost:8080 MIRVA_TOKEN=<token> \
+MIRVA_URL=http://localhost:8080 MIRVA_API_KEY=<key> \
   node tools/audit-board.mjs <boardId>
 ```
 
 It lists the whole board rather than a region on purpose. A region answers
 only what is inside it, and each of these faults is about something being
 somewhere you did not think to look.
-
-`npm run check-board -- <boardId> [<prefix>=<count> ...]` runs both board
-tools in one pass and exits non-zero if either fails. Run separately they
-tend to be run one at a time, which is how a fault in the other one
-survives.
-
-`tools/verify-claims.mjs` checks that a section still holds what it is
-supposed to. A section's name is a claim, and claims drift as work moves
-around.
-
-```bash
-MIRVA_URL=http://localhost:8080 MIRVA_TOKEN=<token> \
-  node tools/verify-claims.mjs <boardId> 10=36 11=12 04=document:2
-```
-
-A bare count means everything the section holds; prefixing a type —
-`canvas`, `document`, `sticky` — pins down one kind, which is what a
-section holding both a document and a card needs. It exits non-zero when a
-claim does not match, so it can gate a script.
 
 ## Testing
 
@@ -120,7 +101,7 @@ unicode input, bound clamping, concurrency, socket loss, and bad tokens.
 
 ```bash
 MIRVA_URL=http://localhost:8080 \
-MIRVA_TOKEN=<account token> \
+MIRVA_API_KEY=<account key> \
 MIRVA_OUTSIDER_TOKEN=<second account, no shared membership> \
 MIRVA_BOARD=<a board shortId the account can see> \
   node test/hard-cases.mjs

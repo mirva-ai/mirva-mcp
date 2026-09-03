@@ -16,8 +16,7 @@
   },
   "scripts": {
     "start": "node src/index.mjs",
-    "test": "node test/board-geometry.mjs",
-    "check-board": "node tools/check-board.mjs"
+    "test": "node test/board-geometry.mjs"
   },
   "keywords": [
     "mcp",
