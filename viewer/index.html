@@ -50,6 +50,19 @@
 const state = { shortId: null, type: null, bounds: null, inFlight: false, again: false, view: { x: 0, y: 0, w: 2000, h: 1200 }, image: null, imageRect: null, elements: [], selected: null, timer: null, tools: [] };
 const $ = id => document.getElementById(id);
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
+// The view lives in the URL — board, region and zoom — so a state can be copied and reopened as it was.
+const CAPTURE_MAX_DIM = 1400;
+function viewToUrl() {
+  if (!state.shortId) return;
+  const v = state.view; const q = new URLSearchParams({ board: state.shortId, x: Math.round(v.x), y: Math.round(v.y), w: Math.round(v.w), h: Math.round(v.h), maxDim: CAPTURE_MAX_DIM });
+  history.replaceState(null, '', '#' + q);
+}
+function viewFromUrl() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  if (!q.get('board')) return null;
+  const n = k => Number(q.get(k));
+  return { shortId: q.get('board'), view: { x: n('x'), y: n('y'), w: n('w'), h: n('h') } };
+}
 const api = (path, params) => fetch(path + (params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined)) : '')).then(r => r.json());
 const status = t => { $('status').textContent = t; };
 
@@ -64,7 +77,7 @@ async function loadDrawings() {
     list.appendChild(b);
   }
 }
-async function openDrawing(row) {
+async function openDrawing(row, keepView = false) {
   for (const b of $('list').children) b.classList.toggle('active', b.textContent.includes(row.shortId));
   state.shortId = row.shortId; state.type = row.type; state.selected = null;
   status(`opening ${row.shortId}…`);
@@ -73,7 +86,8 @@ async function openDrawing(row) {
   // A canvas has edges; a board does not. Only what lies inside a canvas can be captured.
   state.bounds = row.type === 'Board' ? null : { x: 0, y: 0, w, h };
   const fit = Math.max(w / $('view').clientWidth, h / $('view').clientHeight);
-  state.view = { x: 0, y: 0, w: $('view').clientWidth * fit, h: $('view').clientHeight * fit };
+  if (!keepView) state.view = { x: 0, y: 0, w: $('view').clientWidth * fit, h: $('view').clientHeight * fit };
+  console.debug('[viewer] open', { board: row.shortId, type: row.type, width: w, height: h, layers: info.layers?.length, view: { ...state.view } });
   loadComments();
   refresh();
 }
@@ -100,8 +114,11 @@ function refresh() {
     status(`capturing ${r.w}×${r.h} at ${r.x},${r.y}…`);
     const t0 = performance.now();
     try {
-      const img = await new Promise(resolve => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=1400&t=${Date.now()}`; });
+      const captureUrl = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=${CAPTURE_MAX_DIM}`;
+      const img = await new Promise(resolve => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = `${captureUrl}&t=${Date.now()}`; });
       const captureMs = Math.round(performance.now() - t0);
+      viewToUrl();
+      console.debug('[viewer] capture', { board: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM, ms: captureMs, png: img ? [img.naturalWidth, img.naturalHeight] : 'failed', screenZoom: +(canvas.width / state.view.w).toFixed(3), url: location.href, mcp: `capture_drawing ${JSON.stringify({ shortId: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM })}` });
       const els = state.type === 'Board' ? await api('/api/elements', { boardId: state.shortId, ...r }).catch(() => ({ elementBounds: [] })) : { elementBounds: [] };
       state.image = img; state.imageRect = r; state.elements = els.elementBounds || [];
       status(`capture ${captureMs} ms · elements ${Math.round(performance.now() - t0) - captureMs} ms · ${state.elements.length} in view`);
@@ -200,7 +217,17 @@ function renderCoverage(verbs) {
   $('coverage').innerHTML = `<table>${rows.join('')}</table><div style="color:var(--muted);margin-top:4px">${state.tools.length} tools offered · ${used.size} used by this page · ${unmapped.length} tools outside the layer checklist</div>`;
 }
 
-(async () => { state.tools = await api('/api/tools'); await loadDrawings(); draw(); loadLog(); })();
+(async () => {
+  state.tools = await api('/api/tools'); await loadDrawings(); draw(); loadLog();
+  // A copied URL reopens the same board at the same region.
+  const wanted = viewFromUrl();
+  if (wanted) {
+    const rows = await api('/api/drawings', { limit: 100 });
+    const row = rows.find(r => r.shortId === wanted.shortId) ?? { shortId: wanted.shortId, type: 'Board', name: wanted.shortId };
+    state.view = wanted.view;
+    await openDrawing(row, true);
+  }
+})();
 </script>
 </body>
 </html>
