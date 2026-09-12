@@ -18,6 +18,18 @@ and zoom. Everything else on the page is a verb's answer too:
   for either. Destructive buttons ask for a second click.
 - **Comments** — `list_comments` threads with reply and resolve; each
   thread's anchor is marked on the picture.
+- **Toolbar** — the editor's pointer tools, each a verb on release: brush,
+  eraser and line (`draw_shapes`), rectangle and ellipse (`draw_shape`),
+  text (`draw_text`), bucket (`fill_area`), eyedropper (`pick_color`),
+  select rect / ellipse / lasso (`select_*`), paste image (`paste_image`
+  into the dragged rect), and all / none / invert / delete selected. The
+  preset list is `list_brush_presets`.
+- **Chat** — `create_ai_session`, `send_message` (with an image), `get_messages`,
+  `read_message_image` and `undo_agent_edits` on an agent reply.
+- **Verbs** — every tool the bridge offers as a form built from its own
+  schema, prefilled from the open drawing, the selected layer and the view;
+  the answer is shown, images included. Nothing the bridge offers is
+  unreachable from the page.
 
 Every verb re-reads the drawing (`open_drawing`) and captures it again, so
 the page shows what the bridge did, not what the page assumed. A verb the
