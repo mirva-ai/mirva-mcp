@@ -59,6 +59,8 @@ createServer(async (req, res) => {
     if (url.pathname === '/' || url.pathname === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(readFileSync(join(here, 'index.html')));
+    } else if (url.pathname === '/favicon.ico') {
+      res.writeHead(204); res.end();
     } else if (url.pathname === '/api/tools') {
       const listed = await client.call('listTools');
       json(res, 200, listed.tools ?? listed);
@@ -73,10 +75,15 @@ createServer(async (req, res) => {
       json(res, 200, await tool('list_comments', { drawingId: q.get('drawingId') }));
     } else if (url.pathname === '/api/capture') {
       const rect = q.has('x') ? { rect: { x: num(q, 'x'), y: num(q, 'y'), w: num(q, 'w'), h: num(q, 'h') } } : {};
-      const captured = await tool('capture_drawing', { shortId: q.get('shortId'), maxDim: num(q, 'maxDim') ?? 1024, ...rect });
+      const captured = await tool('capture_drawing', { shortId: q.get('shortId'), maxDim: num(q, 'maxDim') ?? 1024, layerId: num(q, 'layerId'), ...rect });
       if (!captured?.image) return json(res, 502, { error: 'capture returned no image', result: captured });
       res.writeHead(200, { 'Content-Type': captured.mimeType, 'Cache-Control': 'no-store' });
       res.end(captured.image);
+    } else if (url.pathname === '/api/call' && req.method === 'POST') {
+      // Any verb the bridge offers, with the page's arguments, logged like the rest.
+      const { name, args } = await readBody(req);
+      if (typeof name !== 'string') return json(res, 400, { error: 'name is required' });
+      json(res, 200, { result: await tool(name, args ?? {}) });
     } else if (url.pathname === '/api/log') {
       json(res, 200, { verbs, gaps });
     } else if (url.pathname === '/api/gap' && req.method === 'POST') {

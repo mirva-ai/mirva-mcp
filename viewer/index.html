@@ -5,94 +5,207 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MCP Board Viewer</title>
 <style>
-  :root { color-scheme: light dark; --bg: #f4f5f7; --panel: #ffffff; --ink: #1c1f24; --muted: #6b7280; --line: #d9dde3; --accent: #2563eb; --gap: #b45309; --ok: #15803d; --bad: #b91c1c; }
+  :root { color-scheme: light dark; --bg: #f4f5f7; --panel: #ffffff; --ink: #1c1f24; --muted: #6b7280; --line: #d9dde3; --accent: #2563eb; --gap: #b45309; --ok: #15803d; --bad: #b91c1c; --sel: color-mix(in srgb, var(--accent) 14%, transparent); }
   @media (prefers-color-scheme: dark) { :root { --bg: #14161a; --panel: #1e2126; --ink: #e6e8eb; --muted: #9aa3ad; --line: #30353c; --accent: #60a5fa; --gap: #f59e0b; --ok: #4ade80; --bad: #f87171; } }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); height: 100vh; display: grid; grid-template-columns: 240px 1fr 320px; grid-template-rows: 40px 1fr 180px; grid-template-areas: "top top top" "list view side" "log log log"; }
-  header { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  header b { font-weight: 600; }
-  header .status { color: var(--muted); }
-  #list { grid-area: list; overflow: auto; border-right: 1px solid var(--line); background: var(--panel); }
-  #list button { display: block; width: 100%; text-align: left; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
-  #list button:hover, #list button.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  body { margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); height: 100vh; display: grid; grid-template-columns: 250px 1fr 360px; grid-template-rows: 40px 1fr auto; grid-template-areas: "top top top" "list view side" "log log log"; }
+  header { grid-area: top; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header b { font-weight: 600; white-space: nowrap; }
+  header .status { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header .status.bad { color: var(--bad); }
+  button, select, input, textarea { font: inherit; color: var(--ink); }
+  button { padding: 3px 8px; border-radius: 5px; border: 1px solid var(--line); background: transparent; cursor: pointer; }
+  button:hover:not([disabled]) { background: var(--sel); }
+  button[disabled] { opacity: .5; cursor: not-allowed; }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  button.icon { width: 24px; height: 22px; padding: 0; line-height: 20px; text-align: center; }
+  button.icon.off { opacity: .35; }
+  input[type=text], input[type=number], textarea, select { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+  input[type=number] { width: 64px; }
+  textarea { width: 100%; min-height: 60px; resize: vertical; }
+  #list { grid-area: list; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--panel); min-height: 0; }
+  #list input { margin: 8px; }
+  #list .rows { overflow: auto; flex: 1; }
+  #list .row { display: block; width: 100%; text-align: left; padding: 6px 12px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+  #list .row.active { background: var(--sel); }
   #list small { color: var(--muted); display: block; }
-  #view { grid-area: view; position: relative; overflow: hidden; background: #888; cursor: grab; }
+  .badge { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 11px; background: var(--sel); color: var(--accent); margin-right: 4px; }
+  #view { grid-area: view; position: relative; overflow: hidden; background: #888; cursor: grab; min-height: 0; }
   #view canvas { position: absolute; left: 0; top: 0; }
   #view .hud { position: absolute; right: 8px; top: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-variant-numeric: tabular-nums; color: var(--muted); }
-  #side { grid-area: side; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); padding: 10px 12px; }
-  #side h3 { margin: 10px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-  #side dl { margin: 0; display: grid; grid-template-columns: 70px 1fr; gap: 2px 8px; }
-  #side dt { color: var(--muted); } #side dd { margin: 0; overflow-wrap: anywhere; }
-  .verbs button, .gaps button { margin: 3px 4px 3px 0; padding: 4px 8px; border-radius: 5px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
-  .verbs button { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
-  .verbs button[disabled] { opacity: .55; cursor: not-allowed; }
+  #side { grid-area: side; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; }
+  #side .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  #side .tabs button { flex: 1; border: 0; border-radius: 0; border-bottom: 2px solid transparent; padding: 7px 4px; }
+  #side .tabs button.active { border-bottom-color: var(--accent); color: var(--accent); }
+  #side .pane { overflow: auto; flex: 1; padding: 8px 10px; }
+  #side .pane[hidden] { display: none; }
+  #side h3 { margin: 10px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  #side h3:first-child { margin-top: 2px; }
+  dl { margin: 0; display: grid; grid-template-columns: 72px 1fr; gap: 2px 8px; }
+  dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+  .layer { display: grid; grid-template-columns: 24px 24px 1fr 52px 30px; gap: 3px; align-items: center; padding: 3px 2px; border-radius: 4px; cursor: pointer; }
+  .layer.selected { background: var(--sel); }
+  .layer .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .layer .name small { color: var(--muted); }
+  .layer input.rename { width: 100%; }
+  .layer .opacity { width: 52px; padding: 2px 4px; }
+  .layer .arrows { display: flex; flex-direction: column; }
+  .layer .arrows button { width: 26px; height: 13px; padding: 0; line-height: 11px; font-size: 9px; border-radius: 3px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+  .form { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; margin: 4px 0; }
+  .form label { color: var(--muted); }
   .gaps button { border-color: var(--gap); color: var(--gap); }
-  #log { grid-area: log; display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--line); background: var(--panel); overflow: hidden; }
-  #log > div { overflow: auto; padding: 6px 10px; border-right: 1px solid var(--line); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+  details summary { cursor: pointer; color: var(--muted); }
+  .thread { border-top: 1px solid var(--line); padding: 6px 0; }
+  .thread .meta { color: var(--muted); font-size: 11px; }
+  #log { grid-area: log; border-top: 1px solid var(--line); background: var(--panel); }
+  #log summary { padding: 4px 10px; cursor: pointer; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  #log .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; height: 160px; }
+  #log .cols > div { overflow: auto; padding: 6px 10px; border-right: 1px solid var(--line); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
   #log h4 { margin: 0 0 4px; font: 600 11px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-  .ok { color: var(--ok); } .bad { color: var(--bad); } .gapline { color: var(--gap); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .gapline { color: var(--gap); } .muted { color: var(--muted); }
   table { border-collapse: collapse; width: 100%; } td { padding: 1px 6px 1px 0; vertical-align: top; }
   .yes { color: var(--ok); } .no { color: var(--bad); }
 </style>
 </head>
 <body>
-<header><b>MCP Board Viewer</b><span class="status" id="status">every pixel and every action through the bridge</span></header>
-<nav id="list"></nav>
-<main id="view"><canvas id="canvas"></canvas><div class="hud" id="hud">no board</div></main>
-<aside id="side"><h3>Element</h3><div id="inspector">Click an element on the board.</div><h3>Comments</h3><div id="comments">—</div></aside>
-<section id="log">
-  <div><h4>Verbs used</h4><div id="verbs"></div></div>
-  <div><h4>Gaps recorded</h4><div id="gapsLog"></div></div>
-  <div><h4>Coverage</h4><div id="coverage"></div></div>
-</section>
+<header>
+  <b>MCP Board Viewer</b>
+  <span class="status" id="status">every pixel and every action through the bridge</span>
+  <button id="undo" disabled title="undo_edit">↶ undo</button>
+  <button id="redo" disabled title="redo_edit">↷ redo</button>
+  <button id="reload" disabled title="open_drawing + capture_drawing again">⟳ reload</button>
+</header>
+<nav id="list"><input type="text" id="filter" placeholder="filter drawings…"><div class="rows" id="rows"></div></nav>
+<main id="view"><canvas id="canvas"></canvas><div class="hud" id="hud">no drawing open</div></main>
+<aside id="side">
+  <div class="tabs"><button data-tab="layers" class="active">Layers</button><button data-tab="inspector">Selection</button><button data-tab="comments">Comments</button></div>
+  <div class="pane" id="layers">Open a drawing.</div>
+  <div class="pane" id="inspector" hidden>Nothing selected.</div>
+  <div class="pane" id="comments" hidden>—</div>
+</aside>
+<details id="log" open>
+  <summary>Verbs used · gaps recorded · coverage</summary>
+  <div class="cols">
+    <div><h4>Verbs used</h4><div id="verbs"></div></div>
+    <div><h4>Gaps recorded</h4><div id="gapsLog"></div></div>
+    <div><h4>Coverage</h4><div id="coverage"></div></div>
+  </div>
+</details>
 <script>
 // ---- state -----------------------------------------------------------------
-const state = { shortId: null, type: null, bounds: null, inFlight: false, again: false, view: { x: 0, y: 0, w: 2000, h: 1200 }, image: null, imageRect: null, elements: [], selected: null, timer: null, tools: [] };
+// Everything shown comes from the bridge: layers from open_drawing, the picture
+// from capture_drawing, the board's element kinds from list_board_elements.
+const state = { shortId: null, type: null, name: '', bounds: null, layers: [], elements: [], selectedId: null, solo: false, view: { x: 0, y: 0, w: 2000, h: 1200 }, image: null, imageRect: null, inFlight: false, again: false, timer: null, tools: [], rows: [], threads: [] };
 const $ = id => document.getElementById(id);
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
-// The view lives in the URL — board, region and zoom — so a state can be copied and reopened as it was.
 const CAPTURE_MAX_DIM = 1400;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const status = (t, bad = false) => { const el = $('status'); el.textContent = t; el.classList.toggle('bad', bad); };
+
+// The view lives in the URL — drawing, region and zoom — so a state can be copied and reopened as it was.
 function viewToUrl() {
   if (!state.shortId) return;
   const v = state.view; const q = new URLSearchParams({ board: state.shortId, x: Math.round(v.x), y: Math.round(v.y), w: Math.round(v.w), h: Math.round(v.h), maxDim: CAPTURE_MAX_DIM });
+  if (state.selectedId != null) q.set('layer', state.selectedId);
   history.replaceState(null, '', '#' + q);
 }
 function viewFromUrl() {
   const q = new URLSearchParams(location.hash.slice(1));
   if (!q.get('board')) return null;
   const n = k => Number(q.get(k));
-  return { shortId: q.get('board'), view: { x: n('x'), y: n('y'), w: n('w'), h: n('h') } };
+  return { shortId: q.get('board'), view: { x: n('x'), y: n('y'), w: n('w'), h: n('h') }, layer: q.get('layer') ? Number(q.get('layer')) : null };
 }
-const api = (path, params) => fetch(path + (params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined)) : '')).then(r => r.json());
-const status = t => { $('status').textContent = t; };
 
-// ---- drawings list -----------------------------------------------------------
-async function loadDrawings() {
-  const rows = await api('/api/drawings', { limit: 50 });
-  const list = $('list'); list.innerHTML = '';
-  for (const row of rows.filter(r => r.type === 'Board' || r.type === 'Drawing')) {
-    const b = document.createElement('button');
-    b.innerHTML = `${row.name || '(unnamed)'}<small>${row.type} · ${row.shortId}</small>`;
-    b.onclick = () => openDrawing(row);
-    list.appendChild(b);
+// ---- the bridge ----------------------------------------------------------------
+const api = (path, params) => fetch(path + (params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined)) : '')).then(r => r.json());
+/** A verb with its arguments, exactly as an agent would send it. */
+async function call(name, args) {
+  const res = await fetch('/api/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, args }) });
+  const body = await res.json();
+  if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`);
+  return body.result;
+}
+/** Run a verb, then read the drawing back and capture it again — the page never assumes a verb did what it says. */
+async function act(name, args, then) {
+  status(`${name}…`);
+  try {
+    const result = await call(name, args);
+    console.debug('[viewer] verb', name, args, result);
+    status(`${name} ok`);
+    if (then) then(result);
+    await reopen();
+  } catch (e) {
+    console.warn('[viewer] verb failed', name, args, e.message);
+    status(`${name} failed: ${e.message}`, true);
+  } finally {
+    loadLog();
   }
 }
-async function openDrawing(row, keepView = false) {
-  for (const b of $('list').children) b.classList.toggle('active', b.textContent.includes(row.shortId));
-  state.shortId = row.shortId; state.type = row.type; state.selected = null;
-  status(`opening ${row.shortId}…`);
-  const info = await api('/api/open', { shortId: row.shortId });
+
+// ---- drawings list ---------------------------------------------------------------
+async function loadDrawings() {
+  state.rows = await api('/api/drawings', { limit: 100 });
+  renderRows();
+}
+function renderRows() {
+  const f = $('filter').value.trim().toLowerCase();
+  const rows = state.rows.filter(r => (r.type === 'Board' || r.type === 'Drawing') && (!f || (r.name || '').toLowerCase().includes(f) || r.shortId.toLowerCase().includes(f)));
+  rows.sort((a, b) => (a.type === b.type ? 0 : a.type === 'Board' ? -1 : 1));
+  const box = $('rows'); box.innerHTML = '';
+  for (const row of rows) {
+    const b = document.createElement('button'); b.className = 'row' + (row.shortId === state.shortId ? ' active' : '');
+    b.innerHTML = `<span class="badge">${row.type === 'Board' ? 'board' : 'canvas'}</span>${esc(row.name || '(unnamed)')}<small>${row.shortId}</small>`;
+    b.onclick = () => openDrawing(row);
+    box.appendChild(b);
+  }
+  const hidden = state.rows.length - state.rows.filter(r => r.type === 'Board' || r.type === 'Drawing').length;
+  if (hidden) box.insertAdjacentHTML('beforeend', `<div class="muted" style="padding:6px 12px">${hidden} documents and models not listed</div>`);
+}
+$('filter').oninput = renderRows;
+
+async function openDrawing(row, keepView = false, selectId = null) {
+  state.shortId = row.shortId; state.type = row.type; state.name = row.name || ''; state.selectedId = selectId; state.solo = false; state.layers = []; state.elements = [];
+  renderRows();
+  status(`open_drawing ${row.shortId}…`);
+  let info;
+  try { info = await call('open_drawing', { shortId: row.shortId }); }
+  catch (e) { status(`open_drawing failed: ${e.message}`, true); return; }
   const w = info.width || 2000, h = info.height || 1200;
   // A canvas has edges; a board does not. Only what lies inside a canvas can be captured.
   state.bounds = row.type === 'Board' ? null : { x: 0, y: 0, w, h };
+  state.layers = info.layers || [];
   const fit = Math.max(w / $('view').clientWidth, h / $('view').clientHeight);
   if (!keepView) state.view = { x: 0, y: 0, w: $('view').clientWidth * fit, h: $('view').clientHeight * fit };
-  console.debug('[viewer] open', { board: row.shortId, type: row.type, width: w, height: h, layers: info.layers?.length, view: { ...state.view } });
-  loadComments();
+  console.debug('[viewer] open', { board: row.shortId, type: row.type, width: w, height: h, layers: state.layers.length, users: info.users, view: { ...state.view } });
+  for (const b of ['undo', 'redo']) $(b).disabled = row.type !== 'Drawing';
+  $('reload').disabled = false;
+  if (row.type === 'Board') await loadElements();
+  renderLayers(); renderInspector(); loadComments();
   refresh();
 }
+/** Read the drawing back: layers, element kinds, comments, and the picture. */
+async function reopen() {
+  if (!state.shortId) return;
+  try {
+    const info = await call('open_drawing', { shortId: state.shortId });
+    state.layers = info.layers || [];
+    if (state.bounds) state.bounds = { x: 0, y: 0, w: info.width || state.bounds.w, h: info.height || state.bounds.h };
+  } catch (e) { status(`open_drawing failed: ${e.message}`, true); }
+  if (state.type === 'Board') await loadElements();
+  if (state.selectedId != null && !state.layers.some(l => l.id === state.selectedId)) state.selectedId = null;
+  renderLayers(); renderInspector(); loadComments();
+  refresh();
+}
+async function loadElements() {
+  try { const els = await call('list_board_elements', { boardId: state.shortId }); state.elements = els.elementBounds || []; }
+  catch (e) { state.elements = []; status(`list_board_elements failed: ${e.message}`, true); }
+}
+$('reload').onclick = () => reopen();
+$('undo').onclick = () => act('undo_edit', { drawingId: state.shortId });
+$('redo').onclick = () => act('redo_edit', { drawingId: state.shortId });
 
-// ---- capture + elements: the board is only ever what the bridge returns -------
+// ---- capture: the picture is only ever what the bridge returns ------------------
 function refresh() {
   clearTimeout(state.timer);
   state.timer = setTimeout(async () => {
@@ -108,24 +221,24 @@ function refresh() {
     // which the page would otherwise stretch across the whole view.
     if (state.bounds) {
       const b = state.bounds; const x0 = Math.max(r.x, b.x), y0 = Math.max(r.y, b.y), x1 = Math.min(r.x + r.w, b.x + b.w), y1 = Math.min(r.y + r.h, b.y + b.h);
-      if (x1 - x0 < 1 || y1 - y0 < 1) { state.image = null; state.imageRect = null; state.elements = []; status('view is outside the canvas'); draw(); return; }
+      if (x1 - x0 < 1 || y1 - y0 < 1) { state.image = null; state.imageRect = null; state.inFlight = false; status('view is outside the canvas'); draw(); return; }
       r = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     }
-    status(`capturing ${r.w}×${r.h} at ${r.x},${r.y}…`);
+    const solo = state.solo && state.selectedId != null ? state.selectedId : undefined;
+    status(`capture_drawing ${r.w}×${r.h} at ${r.x},${r.y}${solo != null ? ` · layer ${solo} only` : ''}…`);
     const t0 = performance.now();
     try {
-      const captureUrl = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=${CAPTURE_MAX_DIM}`;
+      const captureUrl = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=${CAPTURE_MAX_DIM}${solo != null ? `&layerId=${solo}` : ''}`;
       // A failed capture answers with JSON, not an image; the failure is shown and the last image kept.
       const captureRes = await fetch(`${captureUrl}&t=${Date.now()}`);
       const failure = (captureRes.headers.get('content-type') || '').includes('json') ? ((await captureRes.json()).error || `HTTP ${captureRes.status}`) : null;
       const img = failure ? null : await new Promise(async resolve => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = URL.createObjectURL(await captureRes.blob()); });
       const captureMs = Math.round(performance.now() - t0);
       viewToUrl();
-      console.debug('[viewer] capture', { board: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM, ms: captureMs, png: img ? [img.naturalWidth, img.naturalHeight] : failure || 'failed', screenZoom: +(canvas.width / state.view.w).toFixed(3), url: location.href, mcp: `capture_drawing ${JSON.stringify({ shortId: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM })}` });
-      const els = state.type === 'Board' ? await api('/api/elements', { boardId: state.shortId, ...r }).catch(() => ({ elementBounds: [] })) : { elementBounds: [] };
-      if (failure) { console.warn('[viewer] capture failed', failure); status(`capture failed: ${failure}`); draw(); return; }
-      state.image = img; state.imageRect = r; state.elements = els.elementBounds || [];
-      status(`capture ${captureMs} ms · elements ${Math.round(performance.now() - t0) - captureMs} ms · ${state.elements.length} in view`);
+      console.debug('[viewer] capture', { board: state.shortId, rect: r, layerId: solo, maxDim: CAPTURE_MAX_DIM, ms: captureMs, png: img ? [img.naturalWidth, img.naturalHeight] : failure || 'failed', screenZoom: +(canvas.width / state.view.w).toFixed(3), url: location.href, mcp: `capture_drawing ${JSON.stringify({ shortId: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM, ...(solo != null ? { layerId: solo } : {}) })}` });
+      if (failure) { console.warn('[viewer] capture failed', failure); status(`capture_drawing failed: ${failure}`, true); draw(); return; }
+      state.image = img; state.imageRect = r;
+      status(`capture_drawing ${captureMs} ms · ${img.naturalWidth}×${img.naturalHeight} px · ${state.layers.length} layers`);
       draw(); loadLog();
     } finally {
       state.inFlight = false;
@@ -134,76 +247,222 @@ function refresh() {
   }, 300);
 }
 function toScreen(bx, by) { const v = state.view; const s = canvas.width / v.w; return [(bx - v.x) * s, (by - v.y) * s]; }
+function layerRect(l) {
+  const el = state.elements.find(e => e.id === l.id);
+  return l.bounds || (el && { x: el.x, y: el.y, w: el.w, h: el.h }) || null;
+}
 function draw() {
   const view = $('view'); canvas.width = view.clientWidth; canvas.height = view.clientHeight;
   ctx.fillStyle = '#888'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const s = canvas.width / state.view.w;
   if (state.image && state.imageRect) {
     const [x, y] = toScreen(state.imageRect.x, state.imageRect.y);
-    const s = canvas.width / state.view.w;
     ctx.drawImage(state.image, x, y, state.imageRect.w * s, state.imageRect.h * s);
   }
-  for (const e of state.elements) {
-    const [x, y] = toScreen(e.x, e.y); const s = canvas.width / state.view.w;
-    ctx.strokeStyle = e === state.selected ? '#2563eb' : 'rgba(37,99,235,.45)'; ctx.lineWidth = e === state.selected ? 2 : 1;
-    ctx.strokeRect(x, y, e.w * s, e.h * s);
+  if (state.bounds) {
+    const [x, y] = toScreen(0, 0); ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1; ctx.strokeRect(x, y, state.bounds.w * s, state.bounds.h * s);
   }
-  $('hud').textContent = state.shortId ? `${Math.round(state.view.x)},${Math.round(state.view.y)}  ${Math.round(state.view.w)}×${Math.round(state.view.h)}  zoom ${(canvas.width / state.view.w).toFixed(2)}` : 'no board';
+  for (const l of state.layers) {
+    const r = layerRect(l); if (!r) continue;
+    const [x, y] = toScreen(r.x, r.y);
+    const selected = l.id === state.selectedId;
+    if (!selected && state.type !== 'Board') continue;
+    ctx.strokeStyle = selected ? '#2563eb' : 'rgba(37,99,235,.35)'; ctx.lineWidth = selected ? 2 : 1;
+    ctx.strokeRect(x, y, r.w * s, r.h * s);
+  }
+  // Comment threads sit where list_comments anchors them.
+  for (const t of state.threads) {
+    const at = t.anchor?.location; if (!at) continue;
+    const [x, y] = toScreen(at.x, at.y); const resolved = t.state === 'resolved' || t.resolved === true;
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fillStyle = resolved ? 'rgba(107,114,128,.8)' : 'rgba(180,83,9,.9)'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  $('hud').textContent = state.shortId ? `${esc(state.name)} · ${Math.round(state.view.x)},${Math.round(state.view.y)}  ${Math.round(state.view.w)}×${Math.round(state.view.h)}  zoom ${(canvas.width / state.view.w).toFixed(2)}` : 'no drawing open';
 }
 // pan and zoom move the view; the bridge is asked for the new region
 let drag = null;
 $('view').addEventListener('mousedown', e => { drag = { x: e.clientX, y: e.clientY, vx: state.view.x, vy: state.view.y, moved: false }; });
 window.addEventListener('mousemove', e => { if (!drag) return; const s = state.view.w / canvas.width; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.hypot(dx, dy) > 3) drag.moved = true; state.view.x = drag.vx - dx * s; state.view.y = drag.vy - dy * s; draw(); });
-window.addEventListener('mouseup', e => { if (!drag) return; const moved = drag.moved; drag = null; if (moved) refresh(); else select(e); });
+window.addEventListener('mouseup', e => { if (!drag) return; const moved = drag.moved; drag = null; if (moved) refresh(); else pick(e); });
 $('view').addEventListener('wheel', e => { e.preventDefault(); const f = e.deltaY > 0 ? 1.15 : 1 / 1.15; const rect = canvas.getBoundingClientRect(); const px = (e.clientX - rect.left) / canvas.width, py = (e.clientY - rect.top) / canvas.height; const v = state.view; const nw = v.w * f, nh = v.h * f; v.x += (v.w - nw) * px; v.y += (v.h - nh) * py; v.w = nw; v.h = nh; draw(); refresh(); }, { passive: false });
 window.addEventListener('resize', () => { draw(); refresh(); });
-
-// ---- inspector: the verbs an element admits, and the intents it does not -------
-function select(e) {
+function pick(e) {
   const rect = canvas.getBoundingClientRect(); const s = state.view.w / canvas.width;
   const bx = state.view.x + (e.clientX - rect.left) * s, by = state.view.y + (e.clientY - rect.top) * s;
-  const hits = state.elements.filter(el => bx >= el.x && bx <= el.x + el.w && by >= el.y && by <= el.y + el.h).sort((a, b) => a.w * a.h - b.w * b.h);
-  state.selected = hits[0] || null; draw(); renderInspector();
+  const hits = state.layers.map(l => ({ l, r: layerRect(l) })).filter(({ r }) => r && bx >= r.x && bx <= r.x + r.w && by >= r.y && by <= r.y + r.h).sort((a, b) => a.r.w * a.r.h - b.r.w * b.r.h);
+  select(hits[0] ? hits[0].l.id : null);
 }
-// Verbs per element kind, as the bridge offers them. Read-only build: listed, not wired.
-const VERBS = {
-  section: ['move_board_object', 'set_layer', 'reorder_layers', 'remove_layers'],
-  sticky: ['move_board_object', 'edit_note', 'set_layer', 'reorder_layers', 'remove_layers'],
-  document: ['move_board_object', 'read_document', 'write_document', 'set_layer', 'reorder_layers', 'remove_layers'],
-  canvas: ['place_card', 'set_layer', 'reorder_layers', 'capture_drawing', 'add_comment', 'remove_layers'],
-  video: ['place_card', 'set_layer', 'reorder_layers', 'remove_layers'],
-  model3d: ['place_card', 'set_layer', 'reorder_layers', 'remove_layers'],
-};
+function select(id, showTab = false) {
+  state.selectedId = id; viewToUrl(); draw(); renderLayers(); renderInspector();
+  if (showTab && id != null) showPane('inspector');
+  if (state.solo) refresh();
+}
+function centerOn(id) {
+  const l = state.layers.find(x => x.id === id); const r = l && layerRect(l); if (!r) return;
+  const v = state.view; v.x = r.x + r.w / 2 - v.w / 2; v.y = r.y + r.h / 2 - v.h / 2; draw(); refresh();
+}
+
+// ---- tabs ------------------------------------------------------------------------
+function showPane(name) {
+  for (const b of document.querySelectorAll('#side .tabs button')) b.classList.toggle('active', b.dataset.tab === name);
+  for (const p of ['layers', 'inspector', 'comments']) $(p).hidden = p !== name;
+}
+for (const b of document.querySelectorAll('#side .tabs button')) b.onclick = () => showPane(b.dataset.tab);
+
+// ---- layers: open_drawing's list, top first, each row's controls a set_layer or reorder_layers call
+// The blend modes are the ones set_layer's own description names.
+function blendModes() {
+  const field = state.tools.find(t => t.name === 'set_layer')?.inputSchema?.properties?.mode;
+  if (field?.enum) return field.enum;
+  const named = /Blend mode:\s*([^.]*)/.exec(field?.description || '')?.[1];
+  return named ? named.split(/,|\bor\b/).map(m => m.trim()).filter(Boolean) : ['normal', 'multiply', 'screen', 'overlay'];
+}
+function elementOf(id) { return state.elements.find(e => e.id === id); }
+function renderLayers() {
+  const box = $('layers');
+  if (!state.shortId) { box.textContent = 'Open a drawing.'; return; }
+  const isBoard = state.type === 'Board';
+  const head = isBoard
+    ? `<div class="actions"><button id="addNote">+ note</button><button id="addSection">+ section</button><button id="addDoc">+ document</button></div>`
+    : `<div class="actions"><button id="addLayer">+ layer</button><label><input type="checkbox" id="soloBox" ${state.solo ? 'checked' : ''}> capture selected layer only</label></div>`;
+  const rows = state.layers.map(l => {
+    const el = elementOf(l.id); const kind = el?.type || (isBoard ? 'layer' : 'paint');
+    const label = l.name || el?.name || el?.text?.slice(0, 40) || `layer ${l.id}`;
+    return `<div class="layer ${l.id === state.selectedId ? 'selected' : ''}" data-id="${l.id}" title="layer ${l.id}${l.owner ? ` · owner ${esc(l.owner)}` : ''}">
+      <button class="icon ${l.visible === false ? 'off' : ''}" data-act="visible" title="set_layer visible">👁</button>
+      <button class="icon ${l.locked ? '' : 'off'}" data-act="locked" title="set_layer locked">🔒</button>
+      <span class="name" data-act="rename" title="double-click to rename (set_layer name)">${isBoard ? `<span class="badge">${esc(kind)}</span>` : ''}${esc(label)}</span>
+      <input class="opacity" type="number" min="0" max="100" step="5" value="${Math.round((l.opacity ?? 1) * 100)}" data-act="opacity" title="set_layer opacity">
+      <span class="arrows"><button data-act="up" title="reorder_layers">▲</button><button data-act="down" title="reorder_layers">▼</button></span>
+    </div>`;
+  }).join('');
+  box.innerHTML = head + `<h3>${state.layers.length} layers, top first</h3>` + (rows || '<div class="muted">no layers</div>');
+  $('addLayer') && ($('addLayer').onclick = () => act('create_layer', { drawingId: state.shortId, name: `Layer ${state.layers.length + 1}` }, r => { state.selectedId = r.layerId ?? state.selectedId; }));
+  $('soloBox') && ($('soloBox').onchange = e => { state.solo = e.target.checked; refresh(); });
+  $('addNote') && ($('addNote').onclick = () => { const v = state.view; act('add_note', { boardId: state.shortId, text: 'New note', x: Math.round(v.x + v.w / 2 - 160), y: Math.round(v.y + v.h / 2 - 100), w: 320, h: 200 }, r => { state.selectedId = r.layerId ?? null; }); });
+  $('addSection') && ($('addSection').onclick = () => { const v = state.view; act('create_section', { boardId: state.shortId, name: 'New section', x: Math.round(v.x + v.w / 4), y: Math.round(v.y + v.h / 4), w: Math.round(v.w / 2), h: Math.round(v.h / 2), color: '#7F8C8D' }); });
+  $('addDoc') && ($('addDoc').onclick = () => { const v = state.view; act('write_document', { boardId: state.shortId, content: '# New document\n\nWritten from the viewer.', x: Math.round(v.x + v.w / 2 - 450), y: Math.round(v.y + v.h / 2 - 300) }); });
+  for (const row of box.querySelectorAll('.layer')) {
+    const id = Number(row.dataset.id); const layer = state.layers.find(l => l.id === id);
+    row.onclick = e => { if (e.target.dataset.act && e.target.dataset.act !== 'rename') return; select(id); };
+    row.ondblclick = e => { if (e.target.dataset.act === 'rename' || e.target.closest('[data-act=rename]')) return rename(row, layer); centerOn(id); };
+    row.querySelector('[data-act=visible]').onclick = () => act('set_layer', { drawingId: state.shortId, layerId: id, visible: layer.visible === false });
+    row.querySelector('[data-act=locked]').onclick = () => act('set_layer', { drawingId: state.shortId, layerId: id, locked: !layer.locked });
+    row.querySelector('[data-act=opacity]').onchange = e => act('set_layer', { drawingId: state.shortId, layerId: id, opacity: Math.max(0, Math.min(100, Number(e.target.value))) / 100 });
+    row.querySelector('[data-act=up]').onclick = () => move(id, -1);
+    row.querySelector('[data-act=down]').onclick = () => move(id, 1);
+    row.querySelector('[data-act=rename]').ondblclick = e => { e.stopPropagation(); rename(row, layer); };
+  }
+}
+function rename(row, layer) {
+  const span = row.querySelector('.name'); const input = document.createElement('input'); input.type = 'text'; input.className = 'rename'; input.value = layer.name || '';
+  span.replaceWith(input); input.focus(); input.select();
+  const done = save => { if (save && input.value.trim() && input.value !== layer.name) act('set_layer', { drawingId: state.shortId, layerId: layer.id, name: input.value.trim() }); else renderLayers(); };
+  input.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+  input.onblur = () => done(true);
+}
+function move(id, delta) {
+  const order = state.layers.map(l => l.id); const i = order.indexOf(id); const j = i + delta;
+  if (i < 0 || j < 0 || j >= order.length) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  act('reorder_layers', { drawingId: state.shortId, order });
+}
+
+// ---- inspector: what is selected, and the verbs that apply to it ----------------------
 // Intents the browser offers that no verb serves; pressing one records a gap.
 const GAPS = {
-  '*': ['hide only for me', 'bring forward one step', 'send back one step', 'duplicate this card', 'move to another board', 'group with others'],
+  '*': ['hide only for me', 'duplicate this card', 'move to another board', 'group with others'],
   canvas: ['rename the canvas itself', 'change the card\'s aspect / crop'],
-  sticky: ['change note colour', 'change font size in place'],
-  section: ['rename section in place', 'recolour section'],
-  document: ['comment on the document'],
+  sticky: ['change note colour'],
+  section: ['recolour section'],
+  paint: ['edit a text layer', 'transfer layer to another drawing', 'kick layer owner'],
 };
 function renderInspector() {
-  const el = state.selected; const box = $('inspector');
-  if (!el) { box.textContent = 'Click an element on the board.'; return; }
-  const kind = el.type; const verbs = VERBS[kind] || ['set_layer', 'reorder_layers', 'remove_layers'];
-  const gaps = [...(GAPS['*']), ...(GAPS[kind] || [])];
-  box.innerHTML = `<dl><dt>type</dt><dd>${kind}</dd><dt>layer</dt><dd>${el.id}</dd><dt>name</dt><dd>${el.name || '—'}</dd><dt>text</dt><dd>${el.text ? el.text.slice(0, 80) : '—'}</dd><dt>rect</dt><dd>${el.x},${el.y} ${el.w}×${el.h}</dd>${el.drawingId ? `<dt>canvas</dt><dd>${el.drawingId}</dd>` : ''}</dl>
-    <h3>Verbs</h3><div class="verbs">${verbs.map(v => `<button disabled title="offered by the bridge; not wired in this read-only build">${v}</button>`).join('')}</div>
-    <h3>No verb for…</h3><div class="gaps">${gaps.map(g => `<button data-gap="${g}">${g}</button>`).join('')}</div>`;
+  const box = $('inspector');
+  // A draft typed into the pane survives the re-render that follows every verb.
+  const drafts = Object.fromEntries([...box.querySelectorAll('textarea')].map(t => [t.id, t.value]));
+  const restore = () => { for (const [id, v] of Object.entries(drafts)) if ($(id) && v) $(id).value = v; };
+  const l = state.layers.find(x => x.id === state.selectedId);
+  if (!l) { box.innerHTML = `<div class="muted">Click a layer in the list or on the picture.</div>`; return; }
+  const el = elementOf(l.id); const r = layerRect(l) || {};
+  const isBoard = state.type === 'Board'; const kind = el?.type || (isBoard ? 'layer' : 'paint');
+  let html = `<h3>${esc(kind)} · layer ${l.id}</h3><dl><dt>name</dt><dd>${esc(l.name || el?.name || '—')}</dd>${el?.text ? `<dt>text</dt><dd>${esc(el.text.slice(0, 120))}</dd>` : ''}<dt>rect</dt><dd>${r.x ?? '—'},${r.y ?? '—'} ${r.w ?? '—'}×${r.h ?? '—'}</dd>${el?.drawingId ? `<dt>canvas</dt><dd>${esc(el.drawingId)}</dd>` : ''}${el?.documentId ? `<dt>document</dt><dd>${esc(el.documentId)}</dd>` : ''}${l.owner ? `<dt>owner</dt><dd>${esc(l.owner)}</dd>` : ''}${l.mode ? `<dt>mode</dt><dd>${esc(l.mode)}</dd>` : ''}</dl>`;
+  html += `<h3>Layer</h3><div class="form"><label>blend</label><select id="modeSel">${blendModes().map(m => `<option ${m === (l.mode || 'normal') ? 'selected' : ''}>${m}</option>`).join('')}</select>
+    <label>clip</label><label><input type="checkbox" id="clipBox" ${l.clippingGroup ? 'checked' : ''}> clip to the layer below</label></div>`;
+  if (!isBoard) {
+    html += `<div class="actions"><button id="dupBtn" title="duplicate_layer">duplicate</button><button id="mergeBtn" title="merge_layer_down">merge down</button><button id="trimBtn" title="trim_layer">trim</button><button id="clearBtn" class="danger" title="clear_layer">clear</button><button id="removeBtn" class="danger" title="remove_layers">remove</button></div>
+      <h3>Transform (transform_layer)</h3><div class="form"><label>dx, dy</label><span><input type="number" id="tdx" value="0"> <input type="number" id="tdy" value="0"></span><label>rotate °</label><input type="number" id="trot" value="0"><label>scale</label><input type="number" id="tscale" value="1" step="0.1" min="0.01"><label>flip</label><select id="tflip"><option value="">none</option><option>horizontal</option><option>vertical</option></select></div><div class="actions"><button id="transformBtn">apply</button></div>`;
+  } else {
+    const isCard = ['canvas', 'video', 'model3d'].includes(kind);
+    html += `<h3>Place (${isCard ? 'place_card' : 'move_board_object'})</h3><div class="form"><label>x, y</label><span><input type="number" id="px" value="${r.x ?? 0}"> <input type="number" id="py" value="${r.y ?? 0}"></span><label>w${isCard ? '' : ', h'}</label><span><input type="number" id="pw" value="${r.w ?? 0}">${isCard ? '' : ` <input type="number" id="ph" value="${r.h ?? 0}">`}</span></div><div class="actions"><button id="placeBtn">apply</button>${el?.drawingId ? `<button id="openBtn">open canvas</button>` : ''}<button id="removeBtn" class="danger" title="remove_layers">remove</button></div>`;
+    if (kind === 'sticky') html += `<h3>Note (edit_note)</h3><textarea id="noteText">${esc(el?.text || '')}</textarea><div class="actions"><button id="noteBtn">save text</button></div>`;
+    if (kind === 'document') html += `<h3>Document (read_document / write_document)</h3><textarea id="docText" placeholder="loading…"></textarea><div class="actions"><button id="docBtn">save content</button></div>`;
+  }
+  html += `<h3>Comment (add_comment)</h3><textarea id="commentText" placeholder="comment at the centre of this ${isBoard ? 'element' : 'layer'}"></textarea><div class="actions"><button id="commentBtn">post</button></div>`;
+  const gaps = [...GAPS['*'], ...(GAPS[kind] || [])];
+  html += `<details><summary>Intents with no verb (${gaps.length})</summary><div class="gaps actions">${gaps.map(g => `<button data-gap="${esc(g)}">${esc(g)}</button>`).join('')}</div></details>`;
+  box.innerHTML = html; restore();
+  const d = state.shortId, id = l.id;
+  $('modeSel').onchange = e => act('set_layer', { drawingId: d, layerId: id, mode: e.target.value });
+  $('clipBox').onchange = e => act('set_layer', { drawingId: d, layerId: id, clippingGroup: e.target.checked });
+  const confirmTwice = (btn, fn) => { btn.onclick = () => { if (btn.dataset.armed) return fn(); btn.dataset.armed = '1'; btn.textContent = `${btn.textContent}? click again`; setTimeout(() => { delete btn.dataset.armed; renderInspector(); }, 3000); }; };
+  $('removeBtn') && confirmTwice($('removeBtn'), () => act('remove_layers', { drawingId: d, layerIds: [id] }, () => { state.selectedId = null; }));
+  if (!isBoard) {
+    $('dupBtn').onclick = () => act('duplicate_layer', { drawingId: d, layerId: id });
+    $('mergeBtn').onclick = () => act('merge_layer_down', { drawingId: d, layerId: id });
+    $('trimBtn').onclick = () => act('trim_layer', { drawingId: d, layerId: id });
+    confirmTwice($('clearBtn'), () => act('clear_layer', { drawingId: d, layerId: id }));
+    $('transformBtn').onclick = () => { const n = k => Number($(k).value); const args = { drawingId: d, layerId: id }; if (n('tdx')) args.dx = n('tdx'); if (n('tdy')) args.dy = n('tdy'); if (n('trot')) args.rotate = n('trot'); if (n('tscale') !== 1) args.scale = n('tscale'); if ($('tflip').value) args.flip = $('tflip').value; act('transform_layer', args); };
+  } else {
+    const isCard = ['canvas', 'video', 'model3d'].includes(kind); const n = k => Number($(k).value);
+    $('placeBtn').onclick = () => isCard
+      ? act('place_card', { boardId: d, drawingId: el.drawingId, x: n('px'), y: n('py'), w: n('pw') })
+      : act('move_board_object', { boardId: d, layerId: id, x: n('px'), y: n('py'), w: n('pw'), h: n('ph') });
+    $('openBtn') && ($('openBtn').onclick = () => openDrawing({ shortId: el.drawingId, type: 'Drawing', name: el.name || el.drawingId }));
+    $('noteBtn') && ($('noteBtn').onclick = () => act('edit_note', { boardId: d, layerId: id, text: $('noteText').value }));
+    if ($('docText')) {
+      call('read_document', { documentId: el.documentId }).then(doc => { $('docText').value = typeof doc === 'string' ? doc : (doc.content ?? JSON.stringify(doc)); }).catch(e => { $('docText').placeholder = `read_document failed: ${e.message}`; });
+      $('docBtn').onclick = () => act('write_document', { boardId: d, documentId: el.documentId, content: $('docText').value });
+    }
+  }
+  $('commentBtn').onclick = () => {
+    const text = $('commentText').value.trim(); if (!text) return;
+    const c = r.w ? { x: Math.round(r.x + r.w / 2), y: Math.round(r.y + r.h / 2) } : { x: Math.round(state.bounds ? state.bounds.w / 2 : state.view.x + state.view.w / 2), y: Math.round(state.bounds ? state.bounds.h / 2 : state.view.y + state.view.h / 2) };
+    act('add_comment', { drawingId: d, text, ...c, ...(el?.drawingId ? { canvasId: el.drawingId } : {}) }, () => showPane('comments'));
+  };
   for (const b of box.querySelectorAll('[data-gap]')) b.onclick = async () => {
-    await fetch('/api/gap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intent: b.dataset.gap, element: { type: kind, id: el.id, name: el.name }, board: state.shortId }) });
+    await fetch('/api/gap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intent: b.dataset.gap, element: { type: kind, id, name: l.name }, board: state.shortId }) });
     b.textContent = `✓ ${b.dataset.gap}`; loadLog();
   };
 }
+
+// ---- comments: list_comments, reply_comment, resolve_comment ---------------------------
 async function loadComments() {
-  try { const threads = await api('/api/comments', { drawingId: state.shortId }); $('comments').innerHTML = threads.length ? threads.map(t => `<div>• ${(t.text || '').slice(0, 70)} <small>(${t.messages || 1})</small></div>`).join('') : 'no threads'; }
-  catch (e) { $('comments').textContent = `comments: ${e.message}`; }
+  const box = $('comments');
+  try {
+    const threads = await call('list_comments', { drawingId: state.shortId });
+    state.threads = Array.isArray(threads) ? threads : threads.threads || [];
+  } catch (e) { box.innerHTML = `<div class="bad">list_comments failed: ${esc(e.message)}</div>`; return; }
+  draw();
+  if (!state.threads.length) { box.innerHTML = '<div class="muted">No comment threads. Select an element to comment on it.</div>'; return; }
+  // A thread as list_comments reports it: threadId, text, author, state, anchor.location.
+  box.innerHTML = state.threads.map(t => { const at = t.anchor?.location; const resolved = t.state === 'resolved' || t.resolved === true; return `<div class="thread" data-id="${esc(t.threadId || t.id)}">
+    <div>${esc(t.text || t.message || '')}</div>
+    <div class="meta">${t.author ? esc(t.author) + ' · ' : ''}${at ? `${Math.round(at.x)},${Math.round(at.y)} · ` : ''}${t.messages ?? 1} messages${resolved ? ' · resolved' : ''}</div>
+    <div class="actions"><input type="text" class="replyText" placeholder="reply…"><button data-act="reply">reply</button><button data-act="resolve">${resolved ? 'reopen' : 'resolve'}</button></div>
+  </div>`; }).join('');
+  for (const row of box.querySelectorAll('.thread')) {
+    const threadId = row.dataset.id; const t = state.threads.find(x => String(x.threadId || x.id) === threadId);
+    const resolved = t.state === 'resolved' || t.resolved === true;
+    row.querySelector('[data-act=reply]').onclick = () => { const text = row.querySelector('.replyText').value.trim(); if (text) act('reply_comment', { threadId, text }); };
+    row.querySelector('[data-act=resolve]').onclick = () => act('resolve_comment', { threadId, resolved: !resolved });
+  }
 }
 
-// ---- logs and coverage ---------------------------------------------------------
+// ---- logs and coverage -----------------------------------------------------------------
 async function loadLog() {
   const { verbs, gaps } = await api('/api/log');
-  $('verbs').innerHTML = verbs.slice(-40).reverse().map(v => `<div><span class="${v.ok ? 'ok' : 'bad'}">${v.ok ? '✓' : '✗'}</span> ${v.name} <span style="color:var(--muted)">${v.ms} ms</span>${v.error ? ` <span class="bad">${v.error}</span>` : ''}</div>`).join('');
-  $('gapsLog').innerHTML = gaps.slice().reverse().map(g => `<div class="gapline">${g.intent} <span style="color:var(--muted)">on ${g.element?.type} #${g.element?.id}</span></div>`).join('') || '<span style="color:var(--muted)">none yet</span>';
+  $('verbs').innerHTML = verbs.slice(-60).reverse().map(v => `<div><span class="${v.ok ? 'ok' : 'bad'}">${v.ok ? '✓' : '✗'}</span> ${v.name} <span class="muted">${v.ms} ms</span>${v.error ? ` <span class="bad">${esc(v.error)}</span>` : ''}</div>`).join('');
+  $('gapsLog').innerHTML = gaps.slice().reverse().map(g => `<div class="gapline">${esc(g.intent)} <span class="muted">on ${esc(g.element?.type)} #${esc(g.element?.id)}</span></div>`).join('') || '<span class="muted">none yet</span>';
   renderCoverage(verbs);
 }
 // The browser's layer actions, each with the bridge verb that serves it or none.
@@ -211,25 +470,24 @@ const BROWSER_ACTIONS = [
   ['hide / show layer', 'set_layer'], ['lock layer', 'set_layer'], ['rename layer', 'set_layer'], ['opacity / blend mode', 'set_layer'], ['clip to layer below', 'set_layer'],
   ['move layer pixels', 'transform_layer'], ['rotate / flip / scale', 'transform_layer'], ['restack canvas layers', 'reorder_layers'], ['restack board cards', 'reorder_layers'],
   ['move section / note / doc', 'move_board_object'], ['move canvas card', 'place_card'], ['duplicate layer', 'duplicate_layer'], ['merge down', 'merge_layer_down'], ['delete layer', 'remove_layers'],
-  ['comment on a card', 'add_comment'], ['reply in thread', 'reply_comment'],
+  ['comment on a card', 'add_comment'], ['reply in thread', 'reply_comment'], ['resolve thread', 'resolve_comment'], ['undo / redo', 'undo_edit'],
   ['hide only for me', null], ['edit a text layer', null], ['transfer layer to another drawing', null], ['group / ungroup', null], ['kick layer owner', null],
 ];
 function renderCoverage(verbs) {
   const offered = new Set(state.tools.map(t => t.name)); const used = new Set(verbs.filter(v => v.ok).map(v => v.name));
-  const rows = BROWSER_ACTIONS.map(([action, verb]) => `<tr><td>${action}</td><td class="${verb && offered.has(verb) ? 'yes' : 'no'}">${verb ? (offered.has(verb) ? verb : `${verb} (not offered)`) : 'no verb'}</td><td>${verb && used.has(verb) ? '<span class="yes">used here</span>' : ''}</td></tr>`);
+  const rows = BROWSER_ACTIONS.map(([action, verb]) => `<tr><td>${action}</td><td class="${verb && offered.has(verb) ? 'yes' : 'no'}">${verb ? (offered.has(verb) ? verb : `${verb} (not offered)`) : 'no verb'}</td><td>${verb && used.has(verb) ? '<span class="yes">used</span>' : ''}</td></tr>`);
   const unmapped = state.tools.filter(t => !BROWSER_ACTIONS.some(([, v]) => v === t.name)).map(t => t.name);
-  $('coverage').innerHTML = `<table>${rows.join('')}</table><div style="color:var(--muted);margin-top:4px">${state.tools.length} tools offered · ${used.size} used by this page · ${unmapped.length} tools outside the layer checklist</div>`;
+  $('coverage').innerHTML = `<table>${rows.join('')}</table><div class="muted" style="margin-top:4px">${state.tools.length} tools offered · ${used.size} used by this page · ${unmapped.length} tools outside the layer checklist</div>`;
 }
 
 (async () => {
   state.tools = await api('/api/tools'); await loadDrawings(); draw(); loadLog();
-  // A copied URL reopens the same board at the same region.
+  // A copied URL reopens the same drawing at the same region, with the same layer selected.
   const wanted = viewFromUrl();
   if (wanted) {
-    const rows = await api('/api/drawings', { limit: 100 });
-    const row = rows.find(r => r.shortId === wanted.shortId) ?? { shortId: wanted.shortId, type: 'Board', name: wanted.shortId };
+    const row = state.rows.find(r => r.shortId === wanted.shortId) ?? { shortId: wanted.shortId, type: 'Board', name: wanted.shortId };
     state.view = wanted.view;
-    await openDrawing(row, true);
+    await openDrawing(row, true, wanted.layer);
   }
 })();
 </script>
