@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP Board Viewer</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f4f5f7; --panel: #ffffff; --ink: #1c1f24; --muted: #6b7280; --line: #d9dde3; --accent: #2563eb; --gap: #b45309; --ok: #15803d; --bad: #b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14161a; --panel: #1e2126; --ink: #e6e8eb; --muted: #9aa3ad; --line: #30353c; --accent: #60a5fa; --gap: #f59e0b; --ok: #4ade80; --bad: #f87171; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); height: 100vh; display: grid; grid-template-columns: 240px 1fr 320px; grid-template-rows: 40px 1fr 180px; grid-template-areas: "top top top" "list view side" "log log log"; }
+  header { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header b { font-weight: 600; }
+  header .status { color: var(--muted); }
+  #list { grid-area: list; overflow: auto; border-right: 1px solid var(--line); background: var(--panel); }
+  #list button { display: block; width: 100%; text-align: left; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  #list button:hover, #list button.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  #list small { color: var(--muted); display: block; }
+  #view { grid-area: view; position: relative; overflow: hidden; background: #888; cursor: grab; }
+  #view canvas { position: absolute; left: 0; top: 0; }
+  #view .hud { position: absolute; right: 8px; top: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  #side { grid-area: side; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); padding: 10px 12px; }
+  #side h3 { margin: 10px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  #side dl { margin: 0; display: grid; grid-template-columns: 70px 1fr; gap: 2px 8px; }
+  #side dt { color: var(--muted); } #side dd { margin: 0; overflow-wrap: anywhere; }
+  .verbs button, .gaps button { margin: 3px 4px 3px 0; padding: 4px 8px; border-radius: 5px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .verbs button { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+  .verbs button[disabled] { opacity: .55; cursor: not-allowed; }
+  .gaps button { border-color: var(--gap); color: var(--gap); }
+  #log { grid-area: log; display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--line); background: var(--panel); overflow: hidden; }
+  #log > div { overflow: auto; padding: 6px 10px; border-right: 1px solid var(--line); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+  #log h4 { margin: 0 0 4px; font: 600 11px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .gapline { color: var(--gap); }
+  table { border-collapse: collapse; width: 100%; } td { padding: 1px 6px 1px 0; vertical-align: top; }
+  .yes { color: var(--ok); } .no { color: var(--bad); }
+</style>
+</head>
+<body>
+<header><b>MCP Board Viewer</b><span class="status" id="status">every pixel and every action through the bridge</span></header>
+<nav id="list"></nav>
+<main id="view"><canvas id="canvas"></canvas><div class="hud" id="hud">no board</div></main>
+<aside id="side"><h3>Element</h3><div id="inspector">Click an element on the board.</div><h3>Comments</h3><div id="comments">—</div></aside>
+<section id="log">
+  <div><h4>Verbs used</h4><div id="verbs"></div></div>
+  <div><h4>Gaps recorded</h4><div id="gapsLog"></div></div>
+  <div><h4>Coverage</h4><div id="coverage"></div></div>
+</section>
+<script>
+// ---- state -----------------------------------------------------------------
+const state = { shortId: null, type: null, view: { x: 0, y: 0, w: 2000, h: 1200 }, image: null, imageRect: null, elements: [], selected: null, timer: null, tools: [] };
+const $ = id => document.getElementById(id);
+const canvas = $('canvas'), ctx = canvas.getContext('2d');
+const api = (path, params) => fetch(path + (params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined)) : '')).then(r => r.json());
+const status = t => { $('status').textContent = t; };
+
+// ---- drawings list -----------------------------------------------------------
+async function loadDrawings() {
+  const rows = await api('/api/drawings', { limit: 50 });
+  const list = $('list'); list.innerHTML = '';
+  for (const row of rows.filter(r => r.type === 'Board' || r.type === 'Drawing')) {
+    const b = document.createElement('button');
+    b.innerHTML = `${row.name || '(unnamed)'}<small>${row.type} · ${row.shortId}</small>`;
+    b.onclick = () => openDrawing(row);
+    list.appendChild(b);
+  }
+}
+async function openDrawing(row) {
+  for (const b of $('list').children) b.classList.toggle('active', b.textContent.includes(row.shortId));
+  state.shortId = row.shortId; state.type = row.type; state.selected = null;
+  status(`opening ${row.shortId}…`);
+  const info = await api('/api/open', { shortId: row.shortId });
+  const w = info.width || 2000, h = info.height || 1200;
+  const fit = Math.max(w / $('view').clientWidth, h / $('view').clientHeight);
+  state.view = { x: 0, y: 0, w: $('view').clientWidth * fit, h: $('view').clientHeight * fit };
+  loadComments();
+  refresh();
+}
+
+// ---- capture + elements: the board is only ever what the bridge returns -------
+function refresh() {
+  clearTimeout(state.timer);
+  state.timer = setTimeout(async () => {
+    if (!state.shortId) return;
+    const v = state.view; const r = { x: Math.round(v.x), y: Math.round(v.y), w: Math.round(v.w), h: Math.round(v.h) };
+    status(`capturing ${r.w}×${r.h} at ${r.x},${r.y}…`);
+    const t0 = performance.now();
+    const [img, els] = await Promise.all([
+      new Promise(resolve => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=1400&t=${Date.now()}`; }),
+      state.type === 'Board' ? api('/api/elements', { boardId: state.shortId, ...r }).catch(() => ({ elementBounds: [] })) : Promise.resolve({ elementBounds: [] }),
+    ]);
+    state.image = img; state.imageRect = r; state.elements = els.elementBounds || [];
+    status(`capture ${Math.round(performance.now() - t0)} ms · ${state.elements.length} elements in view`);
+    draw(); loadLog();
+  }, 300);
+}
+function toScreen(bx, by) { const v = state.view; const s = canvas.width / v.w; return [(bx - v.x) * s, (by - v.y) * s]; }
+function draw() {
+  const view = $('view'); canvas.width = view.clientWidth; canvas.height = view.clientHeight;
+  ctx.fillStyle = '#888'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (state.image && state.imageRect) {
+    const [x, y] = toScreen(state.imageRect.x, state.imageRect.y);
+    const s = canvas.width / state.view.w;
+    ctx.drawImage(state.image, x, y, state.imageRect.w * s, state.imageRect.h * s);
+  }
+  for (const e of state.elements) {
+    const [x, y] = toScreen(e.x, e.y); const s = canvas.width / state.view.w;
+    ctx.strokeStyle = e === state.selected ? '#2563eb' : 'rgba(37,99,235,.45)'; ctx.lineWidth = e === state.selected ? 2 : 1;
+    ctx.strokeRect(x, y, e.w * s, e.h * s);
+  }
+  $('hud').textContent = state.shortId ? `${Math.round(state.view.x)},${Math.round(state.view.y)}  ${Math.round(state.view.w)}×${Math.round(state.view.h)}  zoom ${(canvas.width / state.view.w).toFixed(2)}` : 'no board';
+}
+// pan and zoom move the view; the bridge is asked for the new region
+let drag = null;
+$('view').addEventListener('mousedown', e => { drag = { x: e.clientX, y: e.clientY, vx: state.view.x, vy: state.view.y, moved: false }; });
+window.addEventListener('mousemove', e => { if (!drag) return; const s = state.view.w / canvas.width; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.hypot(dx, dy) > 3) drag.moved = true; state.view.x = drag.vx - dx * s; state.view.y = drag.vy - dy * s; draw(); });
+window.addEventListener('mouseup', e => { if (!drag) return; const moved = drag.moved; drag = null; if (moved) refresh(); else select(e); });
+$('view').addEventListener('wheel', e => { e.preventDefault(); const f = e.deltaY > 0 ? 1.15 : 1 / 1.15; const rect = canvas.getBoundingClientRect(); const px = (e.clientX - rect.left) / canvas.width, py = (e.clientY - rect.top) / canvas.height; const v = state.view; const nw = v.w * f, nh = v.h * f; v.x += (v.w - nw) * px; v.y += (v.h - nh) * py; v.w = nw; v.h = nh; draw(); refresh(); }, { passive: false });
+window.addEventListener('resize', () => { draw(); refresh(); });
+
+// ---- inspector: the verbs an element admits, and the intents it does not -------
+function select(e) {
+  const rect = canvas.getBoundingClientRect(); const s = state.view.w / canvas.width;
+  const bx = state.view.x + (e.clientX - rect.left) * s, by = state.view.y + (e.clientY - rect.top) * s;
+  const hits = state.elements.filter(el => bx >= el.x && bx <= el.x + el.w && by >= el.y && by <= el.y + el.h).sort((a, b) => a.w * a.h - b.w * b.h);
+  state.selected = hits[0] || null; draw(); renderInspector();
+}
+// Verbs per element kind, as the bridge offers them. Read-only build: listed, not wired.
+const VERBS = {
+  section: ['move_board_object', 'set_layer', 'reorder_layers', 'remove_layers'],
+  sticky: ['move_board_object', 'edit_note', 'set_layer', 'reorder_layers', 'remove_layers'],
+  document: ['move_board_object', 'read_document', 'write_document', 'set_layer', 'reorder_layers', 'remove_layers'],
+  canvas: ['place_card', 'set_layer', 'reorder_layers', 'capture_drawing', 'add_comment', 'remove_layers'],
+  video: ['place_card', 'set_layer', 'reorder_layers', 'remove_layers'],
+  model3d: ['place_card', 'set_layer', 'reorder_layers', 'remove_layers'],
+};
+// Intents the browser offers that no verb serves; pressing one records a gap.
+const GAPS = {
+  '*': ['hide only for me', 'bring forward one step', 'send back one step', 'duplicate this card', 'move to another board', 'group with others'],
+  canvas: ['rename the canvas itself', 'change the card\'s aspect / crop'],
+  sticky: ['change note colour', 'change font size in place'],
+  section: ['rename section in place', 'recolour section'],
+  document: ['comment on the document'],
+};
+function renderInspector() {
+  const el = state.selected; const box = $('inspector');
+  if (!el) { box.textContent = 'Click an element on the board.'; return; }
+  const kind = el.type; const verbs = VERBS[kind] || ['set_layer', 'reorder_layers', 'remove_layers'];
+  const gaps = [...(GAPS['*']), ...(GAPS[kind] || [])];
+  box.innerHTML = `<dl><dt>type</dt><dd>${kind}</dd><dt>layer</dt><dd>${el.id}</dd><dt>name</dt><dd>${el.name || '—'}</dd><dt>text</dt><dd>${el.text ? el.text.slice(0, 80) : '—'}</dd><dt>rect</dt><dd>${el.x},${el.y} ${el.w}×${el.h}</dd>${el.drawingId ? `<dt>canvas</dt><dd>${el.drawingId}</dd>` : ''}</dl>
+    <h3>Verbs</h3><div class="verbs">${verbs.map(v => `<button disabled title="offered by the bridge; not wired in this read-only build">${v}</button>`).join('')}</div>
+    <h3>No verb for…</h3><div class="gaps">${gaps.map(g => `<button data-gap="${g}">${g}</button>`).join('')}</div>`;
+  for (const b of box.querySelectorAll('[data-gap]')) b.onclick = async () => {
+    await fetch('/api/gap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intent: b.dataset.gap, element: { type: kind, id: el.id, name: el.name }, board: state.shortId }) });
+    b.textContent = `✓ ${b.dataset.gap}`; loadLog();
+  };
+}
+async function loadComments() {
+  try { const threads = await api('/api/comments', { drawingId: state.shortId }); $('comments').innerHTML = threads.length ? threads.map(t => `<div>• ${(t.text || '').slice(0, 70)} <small>(${t.messages || 1})</small></div>`).join('') : 'no threads'; }
+  catch (e) { $('comments').textContent = `comments: ${e.message}`; }
+}
+
+// ---- logs and coverage ---------------------------------------------------------
+async function loadLog() {
+  const { verbs, gaps } = await api('/api/log');
+  $('verbs').innerHTML = verbs.slice(-40).reverse().map(v => `<div><span class="${v.ok ? 'ok' : 'bad'}">${v.ok ? '✓' : '✗'}</span> ${v.name} <span style="color:var(--muted)">${v.ms} ms</span>${v.error ? ` <span class="bad">${v.error}</span>` : ''}</div>`).join('');
+  $('gapsLog').innerHTML = gaps.slice().reverse().map(g => `<div class="gapline">${g.intent} <span style="color:var(--muted)">on ${g.element?.type} #${g.element?.id}</span></div>`).join('') || '<span style="color:var(--muted)">none yet</span>';
+  renderCoverage(verbs);
+}
+// The browser's layer actions, each with the bridge verb that serves it or none.
+const BROWSER_ACTIONS = [
+  ['hide / show layer', 'set_layer'], ['lock layer', 'set_layer'], ['rename layer', 'set_layer'], ['opacity / blend mode', 'set_layer'], ['clip to layer below', 'set_layer'],
+  ['move layer pixels', 'transform_layer'], ['rotate / flip / scale', 'transform_layer'], ['restack canvas layers', 'reorder_layers'], ['restack board cards', 'reorder_layers'],
+  ['move section / note / doc', 'move_board_object'], ['move canvas card', 'place_card'], ['duplicate layer', 'duplicate_layer'], ['merge down', 'merge_layer_down'], ['delete layer', 'remove_layers'],
+  ['comment on a card', 'add_comment'], ['reply in thread', 'reply_comment'],
+  ['hide only for me', null], ['edit a text layer', null], ['transfer layer to another drawing', null], ['group / ungroup', null], ['kick layer owner', null],
+];
+function renderCoverage(verbs) {
+  const offered = new Set(state.tools.map(t => t.name)); const used = new Set(verbs.filter(v => v.ok).map(v => v.name));
+  const rows = BROWSER_ACTIONS.map(([action, verb]) => `<tr><td>${action}</td><td class="${verb && offered.has(verb) ? 'yes' : 'no'}">${verb ? (offered.has(verb) ? verb : `${verb} (not offered)`) : 'no verb'}</td><td>${verb && used.has(verb) ? '<span class="yes">used here</span>' : ''}</td></tr>`);
+  const unmapped = state.tools.filter(t => !BROWSER_ACTIONS.some(([, v]) => v === t.name)).map(t => t.name);
+  $('coverage').innerHTML = `<table>${rows.join('')}</table><div style="color:var(--muted);margin-top:4px">${state.tools.length} tools offered · ${used.size} used by this page · ${unmapped.length} tools outside the layer checklist</div>`;
+}
+
+(async () => { state.tools = await api('/api/tools'); await loadDrawings(); draw(); loadLog(); })();
+</script>
+</body>
+</html>
