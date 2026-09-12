@@ -47,7 +47,7 @@
 </section>
 <script>
 // ---- state -----------------------------------------------------------------
-const state = { shortId: null, type: null, bounds: null, view: { x: 0, y: 0, w: 2000, h: 1200 }, image: null, imageRect: null, elements: [], selected: null, timer: null, tools: [] };
+const state = { shortId: null, type: null, bounds: null, inFlight: false, again: false, view: { x: 0, y: 0, w: 2000, h: 1200 }, image: null, imageRect: null, elements: [], selected: null, timer: null, tools: [] };
 const $ = id => document.getElementById(id);
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
 const api = (path, params) => fetch(path + (params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined)) : '')).then(r => r.json());
@@ -83,6 +83,11 @@ function refresh() {
   clearTimeout(state.timer);
   state.timer = setTimeout(async () => {
     if (!state.shortId) return;
+    // The attachment runs calls one at a time: a capture issued while one is
+    // still rendering only queues behind it. One in flight; a view change
+    // meanwhile is honoured once, when it lands.
+    if (state.inFlight) { state.again = true; return; }
+    state.inFlight = true;
     const v = state.view; let r = { x: Math.round(v.x), y: Math.round(v.y), w: Math.round(v.w), h: Math.round(v.h) };
     // The capture is asked only for the part of the view inside the canvas:
     // a rect past an edge comes back as the clipped region in the asked size,
@@ -94,13 +99,17 @@ function refresh() {
     }
     status(`capturing ${r.w}×${r.h} at ${r.x},${r.y}…`);
     const t0 = performance.now();
-    const [img, els] = await Promise.all([
-      new Promise(resolve => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=1400&t=${Date.now()}`; }),
-      state.type === 'Board' ? api('/api/elements', { boardId: state.shortId, ...r }).catch(() => ({ elementBounds: [] })) : Promise.resolve({ elementBounds: [] }),
-    ]);
-    state.image = img; state.imageRect = r; state.elements = els.elementBounds || [];
-    status(`capture ${Math.round(performance.now() - t0)} ms · ${state.elements.length} elements in view`);
-    draw(); loadLog();
+    try {
+      const img = await new Promise(resolve => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=1400&t=${Date.now()}`; });
+      const captureMs = Math.round(performance.now() - t0);
+      const els = state.type === 'Board' ? await api('/api/elements', { boardId: state.shortId, ...r }).catch(() => ({ elementBounds: [] })) : { elementBounds: [] };
+      state.image = img; state.imageRect = r; state.elements = els.elementBounds || [];
+      status(`capture ${captureMs} ms · elements ${Math.round(performance.now() - t0) - captureMs} ms · ${state.elements.length} in view`);
+      draw(); loadLog();
+    } finally {
+      state.inFlight = false;
+      if (state.again) { state.again = false; refresh(); }
+    }
   }, 300);
 }
 function toScreen(bx, by) { const v = state.view; const s = canvas.width / v.w; return [(bx - v.x) * s, (by - v.y) * s]; }
