@@ -47,7 +47,7 @@
 </section>
 <script>
 // ---- state -----------------------------------------------------------------
-const state = { shortId: null, type: null, view: { x: 0, y: 0, w: 2000, h: 1200 }, image: null, imageRect: null, elements: [], selected: null, timer: null, tools: [] };
+const state = { shortId: null, type: null, bounds: null, view: { x: 0, y: 0, w: 2000, h: 1200 }, image: null, imageRect: null, elements: [], selected: null, timer: null, tools: [] };
 const $ = id => document.getElementById(id);
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
 const api = (path, params) => fetch(path + (params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined)) : '')).then(r => r.json());
@@ -70,6 +70,8 @@ async function openDrawing(row) {
   status(`opening ${row.shortId}…`);
   const info = await api('/api/open', { shortId: row.shortId });
   const w = info.width || 2000, h = info.height || 1200;
+  // A canvas has edges; a board does not. Only what lies inside a canvas can be captured.
+  state.bounds = row.type === 'Board' ? null : { x: 0, y: 0, w, h };
   const fit = Math.max(w / $('view').clientWidth, h / $('view').clientHeight);
   state.view = { x: 0, y: 0, w: $('view').clientWidth * fit, h: $('view').clientHeight * fit };
   loadComments();
@@ -81,7 +83,15 @@ function refresh() {
   clearTimeout(state.timer);
   state.timer = setTimeout(async () => {
     if (!state.shortId) return;
-    const v = state.view; const r = { x: Math.round(v.x), y: Math.round(v.y), w: Math.round(v.w), h: Math.round(v.h) };
+    const v = state.view; let r = { x: Math.round(v.x), y: Math.round(v.y), w: Math.round(v.w), h: Math.round(v.h) };
+    // The capture is asked only for the part of the view inside the canvas:
+    // a rect past an edge comes back as the clipped region in the asked size,
+    // which the page would otherwise stretch across the whole view.
+    if (state.bounds) {
+      const b = state.bounds; const x0 = Math.max(r.x, b.x), y0 = Math.max(r.y, b.y), x1 = Math.min(r.x + r.w, b.x + b.w), y1 = Math.min(r.y + r.h, b.y + b.h);
+      if (x1 - x0 < 1 || y1 - y0 < 1) { state.image = null; state.imageRect = null; state.elements = []; status('view is outside the canvas'); draw(); return; }
+      r = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
     status(`capturing ${r.w}×${r.h} at ${r.x},${r.y}…`);
     const t0 = performance.now();
     const [img, els] = await Promise.all([
