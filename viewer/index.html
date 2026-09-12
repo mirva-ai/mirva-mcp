@@ -115,11 +115,15 @@ function refresh() {
     const t0 = performance.now();
     try {
       const captureUrl = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=${CAPTURE_MAX_DIM}`;
-      const img = await new Promise(resolve => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = `${captureUrl}&t=${Date.now()}`; });
+      // A failed capture answers with JSON, not an image; the failure is shown and the last image kept.
+      const captureRes = await fetch(`${captureUrl}&t=${Date.now()}`);
+      const failure = (captureRes.headers.get('content-type') || '').includes('json') ? ((await captureRes.json()).error || `HTTP ${captureRes.status}`) : null;
+      const img = failure ? null : await new Promise(async resolve => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = URL.createObjectURL(await captureRes.blob()); });
       const captureMs = Math.round(performance.now() - t0);
       viewToUrl();
-      console.debug('[viewer] capture', { board: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM, ms: captureMs, png: img ? [img.naturalWidth, img.naturalHeight] : 'failed', screenZoom: +(canvas.width / state.view.w).toFixed(3), url: location.href, mcp: `capture_drawing ${JSON.stringify({ shortId: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM })}` });
+      console.debug('[viewer] capture', { board: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM, ms: captureMs, png: img ? [img.naturalWidth, img.naturalHeight] : failure || 'failed', screenZoom: +(canvas.width / state.view.w).toFixed(3), url: location.href, mcp: `capture_drawing ${JSON.stringify({ shortId: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM })}` });
       const els = state.type === 'Board' ? await api('/api/elements', { boardId: state.shortId, ...r }).catch(() => ({ elementBounds: [] })) : { elementBounds: [] };
+      if (failure) { console.warn('[viewer] capture failed', failure); status(`capture failed: ${failure}`); draw(); return; }
       state.image = img; state.imageRect = r; state.elements = els.elementBounds || [];
       status(`capture ${captureMs} ms · elements ${Math.round(performance.now() - t0) - captureMs} ms · ${state.elements.length} in view`);
       draw(); loadLog();
