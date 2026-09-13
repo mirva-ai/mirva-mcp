@@ -35,7 +35,9 @@
   #bar label { color: var(--muted); display: inline-flex; align-items: center; gap: 3px; }
   #bar .sep { width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
   #view { grid-area: view; position: relative; overflow: hidden; background: #888; cursor: grab; min-height: 0; }
+  #view { touch-action: none; }
   #view.tool { cursor: crosshair; }
+  #view.brush { cursor: none; }
   #view canvas { position: absolute; left: 0; top: 0; }
   #view .hud { position: absolute; right: 8px; top: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-variant-numeric: tabular-nums; color: var(--muted); }
   #side { grid-area: side; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; }
@@ -90,22 +92,22 @@
 <nav id="list"><input type="text" id="filter" placeholder="filter drawings…"><div class="rows" id="rows"></div></nav>
 <div id="bar">
   <label>tool <select id="mode">
-    <option value="pan">pan / select</option>
-    <option value="brush">brush — draw_shapes path</option>
-    <option value="erase">eraser — draw_shapes erase</option>
-    <option value="line">line — draw_shapes line</option>
-    <option value="rect">rectangle — draw_shape</option>
-    <option value="ellipse">ellipse — draw_shape</option>
-    <option value="text">text — draw_text</option>
-    <option value="fill">bucket — fill_area</option>
-    <option value="pick">eyedropper — pick_color</option>
-    <option value="selectRect">select rect — select_rect</option>
+    <option value="pan">pan / select (V)</option>
+    <option value="brush">brush (B) — draw_shapes path</option>
+    <option value="erase">eraser (E) — draw_shapes erase</option>
+    <option value="line">line (L) — draw_shapes line</option>
+    <option value="rect">rectangle (R) — draw_shape</option>
+    <option value="ellipse">ellipse (O) — draw_shape</option>
+    <option value="text">text (T) — draw_text</option>
+    <option value="fill">bucket (G) — fill_area</option>
+    <option value="pick">eyedropper (I) — pick_color</option>
+    <option value="selectRect">select rect (M) — select_rect</option>
     <option value="selectEllipse">select ellipse — select_ellipse</option>
-    <option value="lasso">lasso — select_lasso (click points, double-click closes)</option>
+    <option value="lasso">lasso (Q) — select_lasso (click points, double-click or Enter closes)</option>
     <option value="paste">paste image — paste_image (drag the target rect)</option>
   </select></label>
   <label>colour <input type="color" id="color" value="#e74c3c"></label>
-  <label>size <input type="number" id="size" value="12" min="1" max="500" style="width:56px"></label>
+  <label>size <input type="number" id="size" value="12" min="1" max="500" style="width:56px" title="[ and ] change it"></label>
   <label>preset <select id="preset"><option value="">default brush</option></select></label>
   <label><input type="checkbox" id="fillShape" checked> filled</label>
   <label>text <input type="text" id="textValue" value="Hello" style="width:100px"></label>
@@ -224,7 +226,7 @@ async function openDrawing(row, keepView = false, selectId = null) {
   refresh();
 }
 /** Read the drawing back: layers, element kinds, comments, and the picture. */
-async function reopen() {
+async function reopen({ capture = true } = {}) {
   if (!state.shortId) return;
   try {
     const info = await call('open_drawing', { shortId: state.shortId });
@@ -234,7 +236,7 @@ async function reopen() {
   if (isBoard()) await loadElements();
   if (state.selectedId != null && !state.layers.some(l => l.id === state.selectedId)) state.selectedId = null;
   renderLayers(); renderInspector(); loadComments();
-  refresh();
+  if (capture) refresh();
 }
 async function loadElements() {
   try { const els = await call('list_board_elements', { boardId: state.shortId }); state.elements = els.elementBounds || []; }
@@ -245,7 +247,10 @@ $('undo').onclick = () => act('undo_edit', { drawingId: state.shortId });
 $('redo').onclick = () => act('redo_edit', { drawingId: state.shortId });
 
 // ---- capture: the picture is only ever what the bridge returns ------------------
-function refresh() {
+/** Resolves after a capture that started after now has landed — what a preview waits for before it goes. */
+const captureWaiters = [];
+function nextCapture(delay = 0) { return new Promise(resolve => { captureWaiters.push({ at: Date.now(), resolve }); refresh(delay); }); }
+function refresh(delay = 300) {
   clearTimeout(state.timer);
   state.timer = setTimeout(async () => {
     if (!state.shortId) return;
@@ -265,7 +270,7 @@ function refresh() {
     }
     const solo = state.solo && state.selectedId != null ? state.selectedId : undefined;
     status(`capture_drawing ${r.w}×${r.h} at ${r.x},${r.y}${solo != null ? ` · layer ${solo} only` : ''}…`);
-    const t0 = performance.now();
+    const t0 = performance.now(); const startedAt = Date.now();
     try {
       const captureUrl = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=${CAPTURE_MAX_DIM}${solo != null ? `&layerId=${solo}` : ''}`;
       // A failed capture answers with JSON, not an image; the failure is shown and the last image kept.
@@ -281,9 +286,10 @@ function refresh() {
       draw(); loadLog();
     } finally {
       state.inFlight = false;
+      for (const w of captureWaiters.splice(0)) { if (w.at <= startedAt) w.resolve(); else captureWaiters.push(w); }
       if (state.again) { state.again = false; refresh(); }
     }
-  }, 300);
+  }, delay);
 }
 function toScreen(bx, by) { const v = state.view; const s = canvas.width / v.w; return [(bx - v.x) * s, (by - v.y) * s]; }
 function toBoard(e) { const rect = canvas.getBoundingClientRect(); const s = state.view.w / canvas.width; return { x: state.view.x + (e.clientX - rect.left) * s, y: state.view.y + (e.clientY - rect.top) * s }; }
@@ -316,52 +322,79 @@ function draw() {
     const [x, y] = toScreen(at.x, at.y); const resolved = t.state === 'resolved';
     ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fillStyle = resolved ? 'rgba(107,114,128,.8)' : 'rgba(180,83,9,.9)'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
   }
-  // The gesture in progress: a stroke, a box or a lasso outline, before the verb is sent.
-  const g = state.gesture; ctx.strokeStyle = $('color').value; ctx.lineWidth = 2; ctx.setLineDash([]);
-  if (g?.points?.length > 1) { ctx.beginPath(); g.points.forEach((p, i) => { const [x, y] = toScreen(p.x, p.y); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); }
+  // Strokes already made, drawn locally with the brush's own size until the
+  // capture that holds them lands; then the gesture in progress; then the
+  // lasso outline being built.
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const strokePath = (points, color, size, alpha) => {
+    if (points.length < 2) return; ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, size * s);
+    ctx.beginPath(); points.forEach((p, i) => { const [x, y] = toScreen(p.x, p.y); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.restore();
+  };
+  for (const pv of strokes.preview) strokePath(pv.points, pv.erase ? '#888' : pv.color, pv.size, pv.erase ? .9 : pv.opacity);
+  const g = state.gesture;
+  if (g?.points) strokePath(g.points, g.erase ? '#888' : $('color').value, Number($('size').value), g.erase ? .9 : 1);
+  ctx.strokeStyle = $('color').value; ctx.lineWidth = 2; ctx.setLineDash([]);
   if (g?.box) {
     const b = normBox(g.box); const [x, y] = toScreen(b.x, b.y);
-    if (g.line) { const [x1, y1] = toScreen(g.box.x1, g.box.y1); const [x2, y2] = toScreen(g.box.x2, g.box.y2); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+    if (g.line) strokePath([{ x: g.box.x1, y: g.box.y1 }, { x: g.box.x2, y: g.box.y2 }], $('color').value, Number($('size').value), 1);
     else if (g.ellipse) { ctx.beginPath(); ctx.ellipse(x + b.w * s / 2, y + b.h * s / 2, b.w * s / 2, b.h * s / 2, 0, 0, Math.PI * 2); ctx.stroke(); }
     else ctx.strokeRect(x, y, b.w * s, b.h * s);
   }
   if (state.lasso.length) { ctx.setLineDash([4, 3]); ctx.beginPath(); state.lasso.forEach((p, i) => { const [x, y] = toScreen(p.x, p.y); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.setLineDash([]); }
+  // The brush cursor: a circle of the brush's size at the pointer.
+  if (state.pointer && ['brush', 'erase', 'line'].includes(mode()) && !isBoard()) {
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(state.pointer.x, state.pointer.y, Math.max(2, Number($('size').value) * s / 2), 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.beginPath(); ctx.arc(state.pointer.x, state.pointer.y, Math.max(3, Number($('size').value) * s / 2 + 1), 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
   $('hud').textContent = state.shortId ? `${state.name} · ${Math.round(state.view.x)},${Math.round(state.view.y)}  ${Math.round(state.view.w)}×${Math.round(state.view.h)}  zoom ${(canvas.width / state.view.w).toFixed(2)}` : 'no drawing open';
 }
 const normBox = b => ({ x: Math.round(Math.min(b.x1, b.x2)), y: Math.round(Math.min(b.y1, b.y2)), w: Math.round(Math.abs(b.x2 - b.x1)), h: Math.round(Math.abs(b.y2 - b.y1)) });
 
 // ---- pointer: pan, or one of the editor's tools sent as a verb --------------------------
 const mode = () => $('mode').value;
-$('mode').onchange = () => { $('view').classList.toggle('tool', mode() !== 'pan'); state.lasso = []; draw(); };
-let drag = null;
-$('view').addEventListener('mousedown', e => {
-  const m = mode(); const p = toBoard(e);
-  if (m === 'pan' || isBoard()) { if (m !== 'pan') status('this tool paints on a canvas; open one (double-click a card, or "open canvas" in Selection)', true); drag = { x: e.clientX, y: e.clientY, vx: state.view.x, vy: state.view.y, moved: false }; return; }
-  if (m === 'brush' || m === 'erase') state.gesture = { points: [p] };
+function setMode(m) { $('mode').value = m; $('mode').dispatchEvent(new Event('change')); }
+$('mode').onchange = () => { const m = mode(); $('view').classList.toggle('tool', m !== 'pan'); $('view').classList.toggle('brush', ['brush', 'erase', 'line'].includes(m)); state.lasso = []; draw(); };
+let drag = null, spaceHeld = false;
+const view = $('view');
+view.addEventListener('pointerdown', e => {
+  if (e.button === 2) return;
+  const m = mode(); const p = toBoard(e); view.setPointerCapture(e.pointerId);
+  // The middle button and a held space pan in any tool, as in the editor; a board takes no paint tool.
+  if (m === 'pan' || e.button === 1 || spaceHeld || isBoard()) { if (m !== 'pan' && isBoard()) status('this tool paints on a canvas; open one (double-click a card, or "open canvas" in Selection)', true); drag = { x: e.clientX, y: e.clientY, vx: state.view.x, vy: state.view.y, moved: false }; return; }
+  const pen = e.pointerType === 'pen';
+  if (m === 'brush' || m === 'erase') state.gesture = { points: [pen ? { ...p, pressure: e.pressure } : p], erase: m === 'erase', pen };
   else if (m === 'line') state.gesture = { box: { x1: p.x, y1: p.y, x2: p.x, y2: p.y }, line: true };
   else if (['rect', 'ellipse', 'selectRect', 'selectEllipse', 'paste'].includes(m)) state.gesture = { box: { x1: p.x, y1: p.y, x2: p.x, y2: p.y }, ellipse: m === 'ellipse' || m === 'selectEllipse' };
   else state.gesture = { click: true }; // fill, eyedropper, text and lasso act on the release
   draw();
 });
-window.addEventListener('mousemove', e => {
+view.addEventListener('pointermove', e => {
+  const rect = canvas.getBoundingClientRect(); state.pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
   if (drag) { const s = state.view.w / canvas.width; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.hypot(dx, dy) > 3) drag.moved = true; state.view.x = drag.vx - dx * s; state.view.y = drag.vy - dy * s; draw(); return; }
-  const g = state.gesture; if (!g) return; const p = toBoard(e);
-  if (g.points) g.points.push(p); else { g.box.x2 = p.x; g.box.y2 = p.y; }
+  const g = state.gesture; if (!g) { if (['brush', 'erase', 'line'].includes(mode())) draw(); return; }
+  // Every intermediate pointer sample goes into the path, not only the ones that reached a frame.
+  const samples = g.points && e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  for (const ev of samples.length ? samples : [e]) { const p = toBoard(ev); if (g.points) g.points.push(g.pen ? { ...p, pressure: ev.pressure } : p); else { g.box.x2 = p.x; g.box.y2 = p.y; } }
   draw();
 });
-window.addEventListener('mouseup', async e => {
-  if (drag) { const moved = drag.moved; drag = null; if (moved) refresh(); else pointerClick(e); return; }
-  const g = state.gesture; if (!g) return; state.gesture = null; draw();
-  if (g.click) return pointerClick(e);
-  const d = state.shortId, m = mode(), color = $('color').value, size = Number($('size').value), layerId = paintLayer();
-  const brush = { drawingId: d, layerId, color, size, ...($('preset').value ? { preset: $('preset').value } : {}) };
+view.addEventListener('pointerleave', () => { state.pointer = null; draw(); });
+view.addEventListener('pointerup', async e => {
+  if (drag) { const moved = drag.moved; drag = null; if (moved) refresh(); else if (mode() === 'pan') pick(e); return; }
+  const g = state.gesture; if (!g) return; state.gesture = null;
+  if (g.click) { draw(); return pointerClick(e); }
+  const d = state.shortId, m = mode(), color = $('color').value, size = Number($('size').value);
   if (m === 'brush' || m === 'erase') {
-    const points = g.points.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) }));
-    if (points.length < 2) points.push({ x: points[0].x + 1, y: points[0].y });
-    return act('draw_shapes', { ...brush, ...(m === 'erase' ? { mode: 'erase' } : {}), shapes: [{ kind: 'path', points }] });
+    const points = g.points.map(p => ({ x: Math.round(p.x), y: Math.round(p.y), ...(p.pressure != null ? { pressure: +p.pressure.toFixed(3) } : {}) }));
+    if (points.length < 2) points.push({ ...points[0], x: points[0].x + 1 });
+    return queueStroke({ kind: 'path', points }, { erase: m === 'erase', pen: g.pen }, { points, color, size, erase: m === 'erase', opacity: 1 });
   }
-  if (m === 'line') return act('draw_shapes', { ...brush, shapes: [{ kind: 'line', x1: Math.round(g.box.x1), y1: Math.round(g.box.y1), x2: Math.round(g.box.x2), y2: Math.round(g.box.y2) }] });
+  if (m === 'line') {
+    const l = { x1: Math.round(g.box.x1), y1: Math.round(g.box.y1), x2: Math.round(g.box.x2), y2: Math.round(g.box.y2) };
+    return queueStroke({ kind: 'line', ...l }, {}, { points: [{ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 }], color, size, opacity: 1 });
+  }
+  draw();
   const b = normBox(g.box); if (b.w < 2 || b.h < 2) return status('drag out a box first');
+  const layerId = paintLayer();
   if (m === 'rect' || m === 'ellipse') return act('draw_shape', { drawingId: d, layerId, kind: m, ...b, fill: $('fillShape').checked, strokeWidth: size, color });
   if (m === 'selectRect' || m === 'selectEllipse') return act(m === 'selectRect' ? 'select_rect' : 'select_ellipse', { drawingId: d, ...b, mode: $('selMode').value }, null, { reread: false });
   if (m === 'paste') {
@@ -370,28 +403,89 @@ window.addEventListener('mouseup', async e => {
     return act('paste_image', { drawingId: d, png, rect: b, name: file.name });
   }
 });
+view.addEventListener('contextmenu', e => e.preventDefault());
+
+// ---- strokes: previewed at once, sent in batches, the picture caught up once per batch ---------
+// A stroke shows on the picture the moment it ends, in the brush's own colour and
+// size, and stays until the capture that holds it lands. While the bridge is busy
+// with one batch the strokes that follow queue up and go as one draw_shapes call,
+// so a fast hand is never waiting on a round trip per stroke.
+const strokes = { queue: [], preview: [], sending: false };
+function brushArgs({ erase, pen }) {
+  return { drawingId: state.shortId, layerId: paintLayer(), color: $('color').value, size: Number($('size').value), ...($('preset').value ? { preset: $('preset').value } : {}), ...(erase ? { mode: 'erase' } : {}), ...(pen ? { sizePressure: true } : {}) };
+}
+function queueStroke(shape, options, preview) {
+  const args = brushArgs(options); const entry = { shape, args, key: JSON.stringify(args), preview };
+  strokes.queue.push(entry); strokes.preview.push(preview); draw();
+  pumpStrokes();
+}
+async function pumpStrokes() {
+  if (strokes.sending || !strokes.queue.length) return;
+  strokes.sending = true;
+  const key = strokes.queue[0].key; const batch = [];
+  while (strokes.queue.length && strokes.queue[0].key === key) batch.push(strokes.queue.shift());
+  const args = { ...batch[0].args, shapes: batch.map(b => b.shape) };
+  status(`draw_shapes · ${batch.length} stroke${batch.length > 1 ? 's' : ''}…`);
+  try {
+    const result = await call('draw_shapes', args);
+    console.debug('[viewer] verb', 'draw_shapes', args, result);
+    status(`draw_shapes ok · ${batch.length} stroke${batch.length > 1 ? 's' : ''}`);
+  } catch (e) {
+    console.warn('[viewer] verb failed', 'draw_shapes', args, e.message);
+    status(`draw_shapes failed: ${e.message}`, true);
+    strokes.preview = strokes.preview.filter(p => !batch.some(b => b.preview === p)); draw();
+  } finally {
+    strokes.sending = false; loadLog();
+  }
+  if (strokes.queue.length) return pumpStrokes();
+  // The queue is empty: one capture for the whole run, then the previews go — the
+  // picture now holds them. The layer list follows, without a second capture.
+  await nextCapture();
+  strokes.preview = strokes.queue.length ? strokes.preview : []; draw();
+  if (!strokes.queue.length) reopen({ capture: false });
+}
+
 async function pointerClick(e) {
   const m = mode(); const b = toBoard(e); const p = { x: Math.round(b.x), y: Math.round(b.y) }; const d = state.shortId;
-  if (m === 'pan') return pick(e);
   if (isBoard()) return;
   if (m === 'fill') return act('fill_area', { drawingId: d, layerId: paintLayer(), x: p.x, y: p.y, color: $('color').value });
   if (m === 'pick') return act('pick_color', { drawingId: d, x: p.x, y: p.y }, r => { const hex = r.hex || r.color; if (typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex)) $('color').value = hex; status(`pick_color ${JSON.stringify(r)}`); }, { reread: false });
   if (m === 'text') return act('draw_text', { drawingId: d, text: $('textValue').value || 'Text', x: p.x, y: p.y, size: Math.max(4, Number($('size').value) * 2), color: $('color').value });
   if (m === 'lasso') {
-    if (e.detail >= 2) {
-      if (state.lasso.length < 3) return status('a lasso needs three points or more');
-      const points = state.lasso; state.lasso = []; draw();
-      return act('select_lasso', { drawingId: d, points, mode: $('selMode').value }, null, { reread: false });
-    }
+    if (e.detail >= 2) return closeLasso();
     state.lasso.push(p); draw();
   }
 }
-$('view').addEventListener('wheel', e => { e.preventDefault(); const f = e.deltaY > 0 ? 1.15 : 1 / 1.15; const rect = canvas.getBoundingClientRect(); const px = (e.clientX - rect.left) / canvas.width, py = (e.clientY - rect.top) / canvas.height; const v = state.view; const nw = v.w * f, nh = v.h * f; v.x += (v.w - nw) * px; v.y += (v.h - nh) * py; v.w = nw; v.h = nh; draw(); refresh(); }, { passive: false });
+function closeLasso() {
+  if (state.lasso.length < 3) return status('a lasso needs three points or more');
+  const points = state.lasso; state.lasso = []; draw();
+  return act('select_lasso', { drawingId: state.shortId, points, mode: $('selMode').value }, null, { reread: false });
+}
+view.addEventListener('wheel', e => { e.preventDefault(); const f = e.deltaY > 0 ? 1.15 : 1 / 1.15; const rect = canvas.getBoundingClientRect(); const px = (e.clientX - rect.left) / canvas.width, py = (e.clientY - rect.top) / canvas.height; const v = state.view; const nw = v.w * f, nh = v.h * f; v.x += (v.w - nw) * px; v.y += (v.h - nh) * py; v.w = nw; v.h = nh; draw(); refresh(); }, { passive: false });
 window.addEventListener('resize', () => { draw(); refresh(); });
 $('selectAll').onclick = () => act('select_all', { drawingId: state.shortId }, null, { reread: false });
 $('deselect').onclick = () => act('deselect', { drawingId: state.shortId }, null, { reread: false });
 $('invertSel').onclick = () => act('invert_selection', { drawingId: state.shortId }, null, { reread: false });
 $('deleteSel').onclick = () => act('delete_selection', { drawingId: state.shortId, layerId: paintLayer() });
+
+// ---- keyboard: the editor's shortcuts -------------------------------------------------------
+const SHORTCUTS = { v: 'pan', b: 'brush', e: 'erase', l: 'line', r: 'rect', o: 'ellipse', t: 'text', g: 'fill', i: 'pick', m: 'selectRect', q: 'lasso' };
+window.addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+  if (e.code === 'Space' && !typing) { spaceHeld = true; e.preventDefault(); return; }
+  if (typing || !state.shortId) return;
+  const meta = e.metaKey || e.ctrlKey; const k = e.key.toLowerCase();
+  if (meta && k === 'z') { e.preventDefault(); return isBoard() ? undefined : act(e.shiftKey ? 'redo_edit' : 'undo_edit', { drawingId: state.shortId }); }
+  if (meta && k === 'a') { e.preventDefault(); return isBoard() ? undefined : $('selectAll').click(); }
+  if (meta && k === 'd') { e.preventDefault(); return isBoard() ? undefined : $('deselect').click(); }
+  if (meta) return;
+  if (k === 'escape') { state.lasso = []; state.gesture = null; draw(); return; }
+  if (k === 'enter' && mode() === 'lasso') return closeLasso();
+  if ((k === 'delete' || k === 'backspace') && !isBoard()) return $('deleteSel').click();
+  if (k === '[' || k === ']') { const sz = $('size'); sz.value = Math.max(1, Math.min(500, Math.round(Number(sz.value) * (k === ']' ? 1.25 : 0.8)))); draw(); return; }
+  if (SHORTCUTS[k]) setMode(SHORTCUTS[k]);
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space') spaceHeld = false; });
 const fileToBase64 = file => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(',')[1]); r.onerror = reject; r.readAsDataURL(file); });
 async function loadPresets() {
   try {
@@ -650,8 +744,10 @@ function renderVerbs(selected) {
   const current = selected || $('verbSel')?.value || 'get_drawing';
   const tool = state.tools.find(t => t.name === current) || state.tools[0]; if (!tool) return;
   const p = tool.inputSchema?.properties || {}; const req = new Set(tool.inputSchema?.required || []);
+  // x and y are prefilled with the view's centre only where they place something; on
+  // resize_canvas they move the canvas origin, and the form leaves them for the user.
   const field = (k, f) => {
-    const val = contextFor(k); const id = `arg_${k}`;
+    const val = tool.name === 'resize_canvas' && (k === 'x' || k === 'y') ? '' : contextFor(k); const id = `arg_${k}`;
     if (f.type === 'boolean') return `<label><input type="checkbox" id="${id}"> ${esc((f.description || '').slice(0, 60))}</label>`;
     if (f.enum) return `<select id="${id}"><option value="">—</option>${f.enum.map(o => `<option>${esc(o)}</option>`).join('')}</select>`;
     if (f.type === 'number') return `<input type="number" id="${id}" value="${esc(val)}" step="any" style="width:100%">`;

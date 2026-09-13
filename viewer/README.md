@@ -24,6 +24,15 @@ and zoom. Everything else on the page is a verb's answer too:
   select rect / ellipse / lasso (`select_*`), paste image (`paste_image`
   into the dragged rect), and all / none / invert / delete selected. The
   preset list is `list_brush_presets`.
+  A stroke shows on the picture the moment it ends, in the brush's own
+  colour and size, and stays until the capture that holds it lands; strokes
+  made while the bridge is busy go together as one `draw_shapes` call, and
+  the picture catches up once per batch. A pen's pressure travels with the
+  points. Shortcuts as in the editor: V B E L R O T G I M Q pick the tool,
+  `[` and `]` change the size, space or the middle button pans in any tool,
+  Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z undo and redo, Cmd/Ctrl+A and Cmd/Ctrl+D
+  select all and none, Delete erases the selection, Enter closes a lasso,
+  Escape drops it.
 - **Chat** — `create_ai_session`, `send_message` (with an image), `get_messages`,
   `read_message_image` and `undo_agent_edits` on an agent reply.
 - **Verbs** — every tool the bridge offers as a form built from its own
