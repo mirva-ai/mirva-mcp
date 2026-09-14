@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * MCP board viewer: a page whose every pixel and every action comes through
  * the same MCP bridge and API key an agent uses. The board is never rendered
@@ -6,7 +7,8 @@
  * a gap the agent has too. Two logs record that: the verbs used, and the
  * intents that had no verb.
  *
- *   MIRVA_URL=http://localhost:4000 MIRVA_API_KEY=... node viewer/server.mjs
+ *   MIRVA_API_KEY=... mirva-mcp-viewer          (or: node viewer/server.mjs)
+ *   MIRVA_URL selects the server, as for mirva-mcp; VIEWER_PORT the local port.
  */
 import { createServer } from 'http';
 import { readFileSync } from 'fs';
@@ -16,7 +18,7 @@ import { credentialsFromEnv, MirvaClient } from '../src/transport.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.VIEWER_PORT || 5177);
-const client = new MirvaClient({ url: process.env.MIRVA_URL || 'http://localhost:4000', ...credentialsFromEnv() });
+const client = new MirvaClient({ url: process.env.MIRVA_URL || 'https://mirva.ai', ...credentialsFromEnv() });
 
 /** Every tool call the page made, newest last: what the agent would have done. */
 const verbs = [];
@@ -96,4 +98,4 @@ createServer(async (req, res) => {
   } catch (e) {
     json(res, 500, { error: e?.message || String(e) });
   }
-}).listen(port, () => console.log(`MCP board viewer on http://localhost:${port} (bridge ${process.env.MIRVA_URL || 'http://localhost:4000'})`));
+}).listen(port, () => console.log(`MCP board viewer on http://localhost:${port} (bridge ${process.env.MIRVA_URL || 'https://mirva.ai'})`));

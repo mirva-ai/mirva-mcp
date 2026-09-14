@@ -1,14 +1,16 @@
 {
   "name": "mirva-mcp",
   "version": "0.1.0",
-  "description": "MCP server for Mirva \u2014 drive boards and canvases with your own account.",
+  "description": "MCP server for Mirva — drive boards and canvases with your own account.",
   "type": "module",
   "bin": {
-    "mirva-mcp": "src/index.mjs"
+    "mirva-mcp": "src/index.mjs",
+    "mirva-mcp-viewer": "viewer/server.mjs"
   },
   "main": "src/index.mjs",
   "files": [
     "src",
+    "viewer",
     "README.md"
   ],
   "engines": {
@@ -16,7 +18,8 @@
   },
   "scripts": {
     "start": "node src/index.mjs",
-    "test": "node test/board-geometry.mjs"
+    "test": "node test/board-geometry.mjs",
+    "viewer": "node viewer/server.mjs"
   },
   "keywords": [
     "mcp",

@@ -53,8 +53,11 @@ Two logs at the bottom: the verbs used, and the intents with no verb. The
 coverage panel grades the bridge's tool list against the browser's own
 layer actions.
 
-    MIRVA_URL=http://localhost:4000 MIRVA_API_KEY=... node viewer/server.mjs
+    MIRVA_API_KEY=... npx -p mirva-mcp mirva-mcp-viewer     # or, in this repo: npm run viewer
     open http://localhost:5177
+
+MIRVA_URL picks the server (default https://mirva.ai, as for mirva-mcp) and
+VIEWER_PORT the local port.
 
 The key never reaches the page: the local server holds it and proxies calls
 (`POST /api/call` runs any verb with the page's arguments and logs it).

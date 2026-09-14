@@ -63,6 +63,23 @@ stores, or bypasses anything.
 That also keeps the package small: no native modules, no database, no build
 step, so `npx` works anywhere Node 20+ does.
 
+## Viewer
+
+A browser page that shows a board exactly as an agent gets it and drives it
+with the same tools: every pixel is a `capture_drawing` PNG and every click
+is a tool call, so what the page cannot do, the agent cannot do either. It
+is the way to see what the bridge will do before an agent does it, and to
+find the gaps.
+
+```
+MIRVA_API_KEY=your-api-key npx -p mirva-mcp mirva-mcp-viewer
+```
+
+Then open http://localhost:5177. The key stays in the local process, which
+proxies the page's calls; `MIRVA_URL` and `MIRVA_TOKEN` work as above and
+`VIEWER_PORT` changes the port. [viewer/README.md](viewer/README.md)
+describes the page.
+
 ## Security
 
 Either credential acts as the account — treat it like a password. An API key
