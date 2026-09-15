@@ -6,14 +6,14 @@ and canvases with your own account.
 
 ## Install
 
-Nothing to install: MCP clients can run it on demand.
+Nothing to install: MCP clients run it on demand straight from this repository (an npm release follows).
 
 ```json
 {
   "mcpServers": {
     "mirva": {
       "command": "npx",
-      "args": ["-y", "mirva-mcp"],
+      "args": ["-y", "github:mirva-ai/mirva-mcp#v0.1.0"],
       "env": { "MIRVA_API_KEY": "your-api-key" }
     }
   }
@@ -72,7 +72,7 @@ is the way to see what the bridge will do before an agent does it, and to
 find the gaps.
 
 ```
-MIRVA_API_KEY=your-api-key npx -p mirva-mcp mirva-mcp-viewer
+MIRVA_API_KEY=your-api-key npx -y -p github:mirva-ai/mirva-mcp#v0.1.0 mirva-mcp-viewer
 ```
 
 Then open http://localhost:5177. The key stays in the local process, which
