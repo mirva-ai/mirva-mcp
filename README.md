@@ -63,9 +63,11 @@ stores, or bypasses anything.
 That also keeps the package small: no native modules and no database, so
 `npx` works anywhere Node 20+ does.
 
-The `release` branch and the `vX.Y.Z` tags hold the built package; `main`
-holds the TypeScript source. Pin a tag (`github:mirva-ai/mirva-mcp#v0.2.0`)
-to stay on one version, or `#release` to follow the latest.
+The `release` branch and the `vX.Y.Z` tags hold the built package and run on
+Node 20+; `main` holds the TypeScript source, which the same commands run
+directly on Node 24+. Pin a tag (`github:mirva-ai/mirva-mcp#v0.2.2`) to stay
+on one version, `#release` to follow the latest build, or the bare
+`mirva-ai/mirva-mcp` to run the source on main.
 
 ## Viewer
 
@@ -153,4 +155,5 @@ which is never committed. A release is `npm version <x.y.z>` followed by
 `npm run release`, which type-checks, builds, and publishes the built package
 to the `release` branch and a version tag with publish-to-git. The build runs
 as the package is packed, so a Git install of a published payload runs no
-build of its own; `main` itself is not installable, only its releases are.
+build of its own. The commands in `bin/` run `dist/` when it exists and the
+sources otherwise, so an install of `main` works too, on Node 24+.
