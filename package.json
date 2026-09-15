@@ -1,16 +1,17 @@
 {
   "name": "mirva-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for Mirva — drive boards and canvases with your own account.",
   "type": "module",
   "bin": {
-    "mirva-mcp": "src/index.mjs",
-    "mirva-mcp-viewer": "viewer/server.mjs"
+    "mirva-mcp": "dist/index.js",
+    "mirva-mcp-viewer": "dist/viewer/server.js"
   },
-  "main": "src/index.mjs",
+  "main": "dist/index.js",
   "files": [
-    "src",
-    "viewer",
+    "dist",
+    "viewer/index.html",
+    "viewer/README.md",
     "README.md",
     "LICENSE"
   ],
@@ -18,9 +19,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node src/index.mjs",
-    "test": "node test/board-geometry.mjs",
-    "viewer": "node viewer/server.mjs"
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "test": "node test/board-geometry.ts",
+    "start": "node src/index.ts",
+    "viewer": "node src/viewer/server.ts",
+    "release": "npm run check && npm run build && publish-to-git --branch release"
   },
   "keywords": [
     "mcp",
@@ -48,5 +53,11 @@
   "homepage": "https://github.com/mirva-ai/mirva-mcp#readme",
   "bugs": {
     "url": "https://github.com/mirva-ai/mirva-mcp/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^7.0.2",
+    "publish-to-git": "^1.1.7"
   }
 }

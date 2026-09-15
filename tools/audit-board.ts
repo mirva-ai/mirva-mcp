@@ -20,14 +20,14 @@
  * somewhere the caller did not think to look.
  *
  * Usage:
- *   MIRVA_URL=... MIRVA_TOKEN=... node tools/audit-board.mjs <boardId>
+ *   MIRVA_URL=... MIRVA_API_KEY=... node tools/audit-board.ts <boardId>
  */
-import { credentialsFromEnv, MirvaClient } from '../src/transport.mjs';
-import { contains, groupByDrawing, isInfrastructureFailure, overlaps } from './board-geometry.mjs';
+import { credentialsFromEnv, errorMessage, isTextResult, MirvaClient } from '../src/transport.ts';
+import { contains, groupByDrawing, isInfrastructureFailure, overlaps, type BoardElement } from './board-geometry.ts';
 
 const boardId = process.argv[2];
 if (!boardId) {
-  console.error('usage: node tools/audit-board.mjs <boardId>');
+  console.error('usage: node tools/audit-board.ts <boardId>');
   process.exit(2);
 }
 
@@ -39,11 +39,12 @@ const client = new MirvaClient({
 const timer = setTimeout(() => { console.error('TIMEOUT'); process.exit(2); }, 90000);
 try {
   const raw = await client.call('callTool', 'list_board_elements', { boardId });
-  const elements = JSON.parse(raw.text).elementBounds;
+  if (!isTextResult(raw)) throw new Error('list_board_elements returned no text');
+  const elements = (JSON.parse(raw.text) as { elementBounds: BoardElement[] }).elementBounds;
 
   const sections = elements.filter(e => e.type === 'section');
   const cards = elements.filter(e => e.type === 'canvas');
-  const problems = [];
+  const problems: string[] = [];
 
   const byDrawing = groupByDrawing(elements);
   for (const [drawingId, layers] of byDrawing) {
@@ -96,7 +97,7 @@ try {
   // Exit 2 is "the audit could not run", distinct from exit 1's "the board
   // has a problem". Both once exited non-zero the same way, so a worker
   // that went away read as a failing board.
-  console.error(`audit could not complete: ${e?.message ?? e}`);
+  console.error(`audit could not complete: ${errorMessage(e)}`);
   process.exit(2);
 } finally {
   clearTimeout(timer);

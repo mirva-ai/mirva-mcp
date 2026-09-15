@@ -7,65 +7,92 @@
  * a gap the agent has too. Two logs record that: the verbs used, and the
  * intents that had no verb.
  *
- *   MIRVA_API_KEY=... mirva-mcp-viewer          (or: node viewer/server.mjs)
+ *   MIRVA_API_KEY=... mirva-mcp-viewer          (or: npm run viewer)
  *   MIRVA_URL selects the server, as for mirva-mcp; VIEWER_PORT the local port.
  */
-import { createServer } from 'http';
 import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
-import { credentialsFromEnv, MirvaClient } from '../src/transport.mjs';
+import { createServer, type IncomingMessage, type ServerResponse } from 'http';
+import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from '../transport.ts';
 
-const here = dirname(fileURLToPath(import.meta.url));
+/** The page, kept beside its README; the same path from the sources and from the build. */
+const pageUrl = new URL('../../viewer/index.html', import.meta.url);
 const port = Number(process.env.VIEWER_PORT || 5177);
-const client = new MirvaClient({ url: process.env.MIRVA_URL || 'https://mirva.ai', ...credentialsFromEnv() });
+const bridge = process.env.MIRVA_URL || 'https://mirva.ai';
+const client = new MirvaClient({ url: bridge, ...credentialsFromEnv() });
+
+interface VerbEntry {
+  name: string;
+  args: Record<string, unknown>;
+  ms: number;
+  ok: boolean;
+  error?: string;
+  at: string;
+}
+
+/** A tool's image answer as bytes, ready to serve. */
+interface ImageBytes {
+  image: Buffer;
+  mimeType: string;
+}
 
 /** Every tool call the page made, newest last: what the agent would have done. */
-const verbs = [];
+const verbs: VerbEntry[] = [];
 /** Every intent the page could not satisfy with a tool: what the agent cannot do. */
-const gaps = [];
+const gaps: Record<string, unknown>[] = [];
+
+function isImageBytes(value: unknown): value is ImageBytes {
+  return typeof value === 'object' && value !== null && Buffer.isBuffer((value as ImageBytes).image);
+}
 
 /** A tool's payload with the transport's envelopes taken off; an image comes back as bytes. */
-async function tool(name, args) {
+async function tool(name: string, args: Record<string, unknown>): Promise<unknown> {
   const started = Date.now();
   try {
     const result = await client.call('callTool', name, args);
     verbs.push({ name, args, ms: Date.now() - started, ok: true, at: new Date().toISOString() });
-    if (result?.data && /^image\//.test(result.mimeType || '')) return { image: Buffer.from(result.data, 'base64'), mimeType: result.mimeType };
-    if (typeof result?.text === 'string') { try { return JSON.parse(result.text); } catch { return result.text; } }
+    if (isImageResult(result)) {
+      const bytes: ImageBytes = { image: Buffer.from(result.data, 'base64'), mimeType: result.mimeType ?? 'image/png' };
+      return bytes;
+    }
+    if (isTextResult(result)) {
+      try { return JSON.parse(result.text) as unknown; } catch { return result.text; }
+    }
     return result;
   } catch (e) {
-    verbs.push({ name, args, ms: Date.now() - started, ok: false, error: e?.message || String(e), at: new Date().toISOString() });
+    verbs.push({ name, args, ms: Date.now() - started, ok: false, error: errorMessage(e), at: new Date().toISOString() });
     throw e;
   }
 }
 
-function json(res, status, body) {
+function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 }
 
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
   const text = Buffer.concat(chunks).toString('utf8');
-  return text ? JSON.parse(text) : {};
+  const parsed: unknown = text ? JSON.parse(text) : {};
+  return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : {};
 }
 
-const num = (q, key) => (q.get(key) === null ? undefined : Number(q.get(key)));
+const num = (q: URLSearchParams, key: string): number | undefined => {
+  const value = q.get(key);
+  return value === null ? undefined : Number(value);
+};
 
 createServer(async (req, res) => {
-  const url = new URL(req.url, `http://localhost:${port}`);
+  const url = new URL(req.url ?? '/', `http://localhost:${port}`);
   const q = url.searchParams;
   try {
     if (url.pathname === '/' || url.pathname === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(readFileSync(join(here, 'index.html')));
+      res.end(readFileSync(pageUrl));
     } else if (url.pathname === '/favicon.ico') {
       res.writeHead(204); res.end();
     } else if (url.pathname === '/api/tools') {
-      const listed = await client.call('listTools');
-      json(res, 200, listed.tools ?? listed);
+      json(res, 200, await client.call('listTools'));
     } else if (url.pathname === '/api/drawings') {
       json(res, 200, await tool('list_drawings', { limit: num(q, 'limit') ?? 50 }));
     } else if (url.pathname === '/api/open') {
@@ -78,14 +105,15 @@ createServer(async (req, res) => {
     } else if (url.pathname === '/api/capture') {
       const rect = q.has('x') ? { rect: { x: num(q, 'x'), y: num(q, 'y'), w: num(q, 'w'), h: num(q, 'h') } } : {};
       const captured = await tool('capture_drawing', { shortId: q.get('shortId'), maxDim: num(q, 'maxDim') ?? 1024, layerId: num(q, 'layerId'), ...rect });
-      if (!captured?.image) return json(res, 502, { error: 'capture returned no image', result: captured });
+      if (!isImageBytes(captured)) return json(res, 502, { error: 'capture returned no image', result: captured });
       res.writeHead(200, { 'Content-Type': captured.mimeType, 'Cache-Control': 'no-store' });
       res.end(captured.image);
     } else if (url.pathname === '/api/call' && req.method === 'POST') {
       // Any verb the bridge offers, with the page's arguments, logged like the rest.
       const { name, args } = await readBody(req);
       if (typeof name !== 'string') return json(res, 400, { error: 'name is required' });
-      json(res, 200, { result: await tool(name, args ?? {}) });
+      const callArgs = typeof args === 'object' && args !== null ? args as Record<string, unknown> : {};
+      json(res, 200, { result: await tool(name, callArgs) });
     } else if (url.pathname === '/api/log') {
       json(res, 200, { verbs, gaps });
     } else if (url.pathname === '/api/gap' && req.method === 'POST') {
@@ -96,6 +124,6 @@ createServer(async (req, res) => {
       json(res, 404, { error: 'not found' });
     }
   } catch (e) {
-    json(res, 500, { error: e?.message || String(e) });
+    json(res, 500, { error: errorMessage(e) });
   }
-}).listen(port, () => console.log(`MCP board viewer on http://localhost:${port} (bridge ${process.env.MIRVA_URL || 'https://mirva.ai'})`));
+}).listen(port, () => console.log(`MCP board viewer on http://localhost:${port} (bridge ${bridge})`));

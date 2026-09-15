@@ -13,7 +13,7 @@ Nothing to install: MCP clients run it on demand straight from this repository (
   "mcpServers": {
     "mirva": {
       "command": "npx",
-      "args": ["-y", "github:mirva-ai/mirva-mcp#v0.1.0"],
+      "args": ["-y", "github:mirva-ai/mirva-mcp#release"],
       "env": { "MIRVA_API_KEY": "your-api-key" }
     }
   }
@@ -60,8 +60,12 @@ whose credential you configured — the same permission checks that guard that
 user in the web app, because it is the same API. Nothing here renders,
 stores, or bypasses anything.
 
-That also keeps the package small: no native modules, no database, no build
-step, so `npx` works anywhere Node 20+ does.
+That also keeps the package small: no native modules and no database, so
+`npx` works anywhere Node 20+ does.
+
+The `release` branch and the `vX.Y.Z` tags hold the built package; `main`
+holds the TypeScript source. Pin a tag (`github:mirva-ai/mirva-mcp#v0.2.0`)
+to stay on one version, or `#release` to follow the latest.
 
 ## Viewer
 
@@ -72,7 +76,7 @@ is the way to see what the bridge will do before an agent does it, and to
 find the gaps.
 
 ```
-MIRVA_API_KEY=your-api-key npx -y -p github:mirva-ai/mirva-mcp#v0.1.0 mirva-mcp-viewer
+MIRVA_API_KEY=your-api-key npx -y -p github:mirva-ai/mirva-mcp#release mirva-mcp-viewer
 ```
 
 Then open http://localhost:5177. The key stays in the local process, which
@@ -138,3 +142,13 @@ permission check makes them fail.
 ## License
 
 MIT
+
+## Development
+
+The source is TypeScript and runs directly under Node 24 (`node src/index.ts`,
+`npm run viewer`, `node tools/soak.ts …`); `npm run check` type-checks the
+sources, tools and tests, `npm test` runs the geometry tests, and
+`test/hard-cases.ts` exercises a live server. `npm run build` emits `dist/`,
+which is never committed. A release is `npm version <x.y.z>` followed by
+`npm run release`, which type-checks, builds, and publishes the built package
+to the `release` branch and a version tag with publish-to-git.

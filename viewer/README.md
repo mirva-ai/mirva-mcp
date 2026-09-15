@@ -53,7 +53,7 @@ Two logs at the bottom: the verbs used, and the intents with no verb. The
 coverage panel grades the bridge's tool list against the browser's own
 layer actions.
 
-    MIRVA_API_KEY=... npx -y -p github:mirva-ai/mirva-mcp#v0.1.0 mirva-mcp-viewer     # or, in this repo: npm run viewer
+    MIRVA_API_KEY=... npx -y -p github:mirva-ai/mirva-mcp#release mirva-mcp-viewer     # or, in this repo: npm run viewer
     open http://localhost:5177
 
 MIRVA_URL picks the server (default https://mirva.ai, as for mirva-mcp) and

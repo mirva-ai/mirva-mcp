@@ -14,13 +14,15 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { credentialsFromEnv, MirvaClient } from './transport.mjs';
+import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { createRequire } from 'module';
+import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from './transport.ts';
 
+const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
 const url = process.env.MIRVA_URL || 'https://mirva.ai';
 const credentials = credentialsFromEnv();
 
-function usage(message) {
+function usage(message: string): never {
   console.error(`mirva-mcp: ${message}
 
   MIRVA_API_KEY API key for the account to act as (from its API page; preferred)
@@ -33,7 +35,7 @@ Configure in an MCP client, e.g. .mcp.json:
     "mcpServers": {
       "mirva": {
         "command": "npx",
-        "args": ["-y", "mirva-mcp"],
+        "args": ["-y", "github:mirva-ai/mirva-mcp#release"],
         "env": { "MIRVA_API_KEY": "..." }
       }
     }
@@ -42,12 +44,12 @@ Configure in an MCP client, e.g. .mcp.json:
   process.exit(1);
 }
 
-async function main() {
+async function main(): Promise<void> {
   if (!credentials.apiKey && !credentials.token) usage('MIRVA_API_KEY (or MIRVA_TOKEN) is required');
 
   const client = new MirvaClient({ url, ...credentials });
   const server = new Server(
-    { name: 'mirva', version: '0.1.0' },
+    { name: 'mirva', version },
     { capabilities: { tools: { listChanged: true } } },
   );
 
@@ -57,10 +59,10 @@ async function main() {
   // compared, after a call and at most once per interval, to the digest of
   // the list last served; a difference is announced, and the client
   // re-lists. A server without the digest action is simply never announced.
-  let servedDigest;
+  let servedDigest: string | undefined;
   let lastDigestCheck = 0;
   const DIGEST_CHECK_INTERVAL_MS = 30_000;
-  const announceIfChanged = async () => {
+  const announceIfChanged = async (): Promise<void> => {
     if (!servedDigest || Date.now() - lastDigestCheck < DIGEST_CHECK_INTERVAL_MS) return;
     lastDigestCheck = Date.now();
     try {
@@ -79,7 +81,7 @@ async function main() {
     return { tools: tools ?? [] };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async request => {
+  server.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
     const { name, arguments: args } = request.params;
     try {
       const result = await client.call('callTool', name, args ?? {});
@@ -88,11 +90,11 @@ async function main() {
     } catch (e) {
       // A failed call reports its reason to the model instead of killing the
       // connection: the caller can usually correct the request and retry.
-      return { content: [{ type: 'text', text: `FAILED: ${e?.message ?? e}` }], isError: true };
+      return { content: [{ type: 'text', text: `FAILED: ${errorMessage(e)}` }], isError: true };
     }
   });
 
-  const shutdown = () => {
+  const shutdown = (): void => {
     client.close();
     process.exit(0);
   };
@@ -108,21 +110,23 @@ async function main() {
  * `{ type: 'image', data, mimeType }` so a capture renders in the client
  * rather than printing as base64.
  */
-function normalizeContent(result) {
+function normalizeContent(result: unknown): CallToolResult['content'] {
   if (result == null) return [{ type: 'text', text: 'OK' }];
-  if (Array.isArray(result?.content)) return result.content;
-  if (result?.type === 'image' && result.data) {
+  if (typeof result === 'object' && Array.isArray((result as { content?: unknown }).content)) {
+    return (result as { content: CallToolResult['content'] }).content;
+  }
+  if (isImageResult(result)) {
     return [{ type: 'image', data: result.data, mimeType: result.mimeType ?? 'image/png' }];
   }
   // The server already answers in MCP's own content shape; passing it
   // through unwrapped keeps the model from reading a JSON envelope around
   // every value.
-  if (result?.type === 'text') return [{ type: 'text', text: result.text ?? '' }];
+  if (isTextResult(result)) return [{ type: 'text', text: result.text }];
   if (typeof result === 'string') return [{ type: 'text', text: result }];
   return [{ type: 'text', text: JSON.stringify(result, null, 2) }];
 }
 
-main().catch(e => {
-  console.error(`mirva-mcp: ${e?.message ?? e}`);
+main().catch((e: unknown) => {
+  console.error(`mirva-mcp: ${errorMessage(e)}`);
   process.exit(1);
 });

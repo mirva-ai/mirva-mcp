@@ -7,13 +7,30 @@
  * and these need nothing.
  */
 
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** A board element as list_board_elements reports it. */
+export interface BoardElement extends Rect {
+  id: number;
+  type: string;
+  name?: string;
+  text?: string;
+  /** The entity a canvas or document layer shows; sections and notes carry none. */
+  drawingId?: string;
+}
+
 /**
  * Whether two rects share any area.
  *
  * Touching edges do not count: cards laid out in a row commonly abut, and
  * treating that as a collision would report every tidy row as broken.
  */
-export function overlaps(a, b) {
+export function overlaps(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
@@ -23,7 +40,7 @@ export function overlaps(a, b) {
  * A card exactly filling its section counts as inside — a section drawn
  * tight around its contents is deliberate, not an error.
  */
-export function contains(outer, inner) {
+export function contains(outer: Rect, inner: Rect): boolean {
   return inner.x >= outer.x && inner.y >= outer.y
     && inner.x + inner.w <= outer.x + outer.w
     && inner.y + inner.h <= outer.y + outer.h;
@@ -37,12 +54,13 @@ export function contains(outer, inner) {
  * layer survived a move, and an id no layer resolves means the entity was
  * binned while still on the board.
  */
-export function groupByDrawing(elements) {
-  const byDrawing = new Map();
+export function groupByDrawing(elements: BoardElement[]): Map<string, BoardElement[]> {
+  const byDrawing = new Map<string, BoardElement[]>();
   for (const e of elements) {
     if (!e.drawingId) continue;
-    if (!byDrawing.has(e.drawingId)) byDrawing.set(e.drawingId, []);
-    byDrawing.get(e.drawingId).push(e);
+    const group = byDrawing.get(e.drawingId);
+    if (group) group.push(e);
+    else byDrawing.set(e.drawingId, [e]);
   }
   return byDrawing;
 }
@@ -53,8 +71,8 @@ export function groupByDrawing(elements) {
  * without the distinction an outage is indistinguishable from a board full
  * of deleted cards.
  */
-export function isInfrastructureFailure(e) {
-  const text = `${e?.name ?? ''} ${e?.message ?? e}`;
-  return /HandsUnavailable|No hands workers|timed out|deadline|ECONNREFUSED|socket hang up/i.test(text);
+export function isInfrastructureFailure(e: unknown): boolean {
+  const name = e instanceof Error ? e.name : '';
+  const message = e instanceof Error ? e.message : String(e);
+  return /HandsUnavailable|No hands workers|timed out|deadline|ECONNREFUSED|socket hang up/i.test(`${name} ${message}`);
 }
-

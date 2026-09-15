@@ -5,22 +5,22 @@
  * eye, so a fault in these two predicates would be worse than having no
  * audit: it would report "no problems found" over a board that has them.
  *
- * Run: node test/board-geometry.mjs
+ * Run: node test/board-geometry.ts
  */
-import { contains, groupByDrawing, isInfrastructureFailure, overlaps } from '../tools/board-geometry.mjs';
+import { contains, groupByDrawing, isInfrastructureFailure, overlaps, type BoardElement, type Rect } from '../tools/board-geometry.ts';
 
 let failures = 0;
 
-function check(name, actual, expected) {
+function check(name: string, actual: unknown, expected: unknown): void {
   if (actual === expected) {
     console.log(`  ok   ${name}`);
   } else {
     failures++;
-    console.log(`  FAIL ${name} — got ${actual}, wanted ${expected}`);
+    console.log(`  FAIL ${name} — got ${String(actual)}, wanted ${String(expected)}`);
   }
 }
 
-const card = (x, y, w = 560, h = 710) => ({ x, y, w, h });
+const card = (x: number, y: number, w = 560, h = 710): Rect => ({ x, y, w, h });
 
 console.log('overlaps');
 check('a rect overlaps itself', overlaps(card(0, 0), card(0, 0)), true);
@@ -47,7 +47,7 @@ check('overlap is symmetric',
   overlaps(card(0, 0), card(300, 300)) === overlaps(card(300, 300), card(0, 0)), true);
 
 console.log('contains');
-const section = { x: 31900, y: 14800, w: 6300, h: 4500 };
+const section: Rect = { x: 31900, y: 14800, w: 6300, h: 4500 };
 check('a card inside its section', contains(section, card(32100, 14900)), true);
 check('a card left of the section', contains(section, card(31000, 14900)), false);
 check('a card below the section', contains(section, card(32100, 19000)), false);
@@ -68,15 +68,15 @@ check('containment is not symmetric',
 console.log('groupByDrawing');
 // Both reference faults are read from this grouping, so what it leaves out
 // matters as much as what it collects.
-const layer = (id, drawingId, x = 0) => ({ id, drawingId, x, y: 0, w: 560, h: 710, type: 'canvas' });
+const layer = (id: number, drawingId: string, x = 0): BoardElement => ({ id, drawingId, x, y: 0, w: 560, h: 710, type: 'canvas' });
 
 const grouped = groupByDrawing([
   layer(1, 'aaa'), layer(2, 'bbb', 700), layer(3, 'aaa', 1400),
 ]);
 check('layers are grouped by the entity they show', grouped.size, 2);
 check('a card moved without its old layer removed shows two',
-  grouped.get('aaa').length, 2);
-check('a card placed once shows one', grouped.get('bbb').length, 1);
+  grouped.get('aaa')?.length, 2);
+check('a card placed once shows one', grouped.get('bbb')?.length, 1);
 
 // A section is a board object in its own right, not a view of an entity.
 // Counting it here would put an id in the map that nothing can resolve,
@@ -98,7 +98,7 @@ const withDocument = groupByDrawing([
 ]);
 check('a document is grouped like any other reference', withDocument.size, 2);
 check('and it is found under its own id',
-  withDocument.get('ddd').length, 1);
+  withDocument.get('ddd')?.length, 1);
 
 check('an empty board groups nothing', groupByDrawing([]).size, 0);
 
@@ -131,7 +131,7 @@ console.log('unclaimed sections');
 // fourteen had never been claimed, and a card lost from any of them would
 // have gone on reporting a clean run — the count was right about what it
 // checked and silent about what it did not.
-const unclaimedOf = (sectionNames, pairs) => {
+const unclaimedOf = (sectionNames: string[], pairs: string[]): string[] => {
   const named = pairs.map(p => p.split('=')[0]);
   return sectionNames.filter(name => !named.some(prefix => name.startsWith(prefix)));
 };
@@ -168,7 +168,7 @@ check('a fault line is left to the failure path',
 console.log('stored claims');
 // The counts were retyped every round, which is why only the deck sections
 // ever got claimed. A comment or blank line in the file is not a claim.
-const parseClaims = text => text.split('\n')
+const parseClaims = (text: string): string[] => text.split('\n')
   .map(line => line.split('#')[0].trim())
   .filter(Boolean);
 check('comments and blanks are dropped',
