@@ -1,6 +1,6 @@
 {
   "name": "mirva-mcp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "MCP server for Mirva — drive boards and canvases with your own account.",
   "type": "module",
   "bin": {
@@ -11,6 +11,7 @@
   "files": [
     "bin",
     "dist",
+    "src",
     "viewer/index.html",
     "viewer/README.md",
     "README.md",
