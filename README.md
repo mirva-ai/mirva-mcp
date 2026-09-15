@@ -151,4 +151,6 @@ sources, tools and tests, `npm test` runs the geometry tests, and
 `test/hard-cases.ts` exercises a live server. `npm run build` emits `dist/`,
 which is never committed. A release is `npm version <x.y.z>` followed by
 `npm run release`, which type-checks, builds, and publishes the built package
-to the `release` branch and a version tag with publish-to-git.
+to the `release` branch and a version tag with publish-to-git. The build runs
+as the package is packed, so a Git install of a published payload runs no
+build of its own; `main` itself is not installable, only its releases are.

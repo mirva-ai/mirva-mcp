@@ -1,6 +1,6 @@
 {
   "name": "mirva-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MCP server for Mirva — drive boards and canvases with your own account.",
   "type": "module",
   "bin": {
@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json",
-    "prepare": "npm run build",
+    "prepack": "npm run build",
     "test": "node test/board-geometry.ts",
     "start": "node src/index.ts",
     "viewer": "node src/viewer/server.ts",
