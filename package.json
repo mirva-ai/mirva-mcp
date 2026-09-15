@@ -1,0 +1,63 @@
+{
+  "name": "mirva-mcp",
+  "version": "0.2.0",
+  "description": "MCP server for Mirva — drive boards and canvases with your own account.",
+  "type": "module",
+  "bin": {
+    "mirva-mcp": "dist/index.js",
+    "mirva-mcp-viewer": "dist/viewer/server.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "viewer/index.html",
+    "viewer/README.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "test": "node test/board-geometry.ts",
+    "start": "node src/index.ts",
+    "viewer": "node src/viewer/server.ts",
+    "release": "npm run check && npm run build && publish-to-git --branch release"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mirva"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepkit/bson": "^1.0.19",
+    "@deepkit/core": "^1.0.19",
+    "@deepkit/core-rxjs": "^1.0.19",
+    "@deepkit/event": "^1.0.19",
+    "@deepkit/injector": "^1.0.19",
+    "@deepkit/logger": "^1.0.19",
+    "@deepkit/rpc": "^1.0.19",
+    "@deepkit/type": "^1.0.19",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "rxjs": "^7.5.6",
+    "ws": "^8.18.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mirva-ai/mirva-mcp.git"
+  },
+  "homepage": "https://github.com/mirva-ai/mirva-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/mirva-ai/mirva-mcp/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^7.0.2",
+    "publish-to-git": "^1.1.7"
+  }
+}

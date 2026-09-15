@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP Board Viewer</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f4f5f7; --panel: #ffffff; --ink: #1c1f24; --muted: #6b7280; --line: #d9dde3; --accent: #2563eb; --gap: #b45309; --ok: #15803d; --bad: #b91c1c; --sel: color-mix(in srgb, var(--accent) 14%, transparent); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14161a; --panel: #1e2126; --ink: #e6e8eb; --muted: #9aa3ad; --line: #30353c; --accent: #60a5fa; --gap: #f59e0b; --ok: #4ade80; --bad: #f87171; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); height: 100vh; display: grid; grid-template-columns: 240px 1fr 380px; grid-template-rows: 40px auto 1fr auto; grid-template-areas: "top top top" "list bar side" "list view side" "log log log"; }
+  header { grid-area: top; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header b { font-weight: 600; white-space: nowrap; }
+  header .status { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header .status.bad { color: var(--bad); }
+  button, select, input, textarea { font: inherit; color: var(--ink); }
+  button { padding: 3px 8px; border-radius: 5px; border: 1px solid var(--line); background: transparent; cursor: pointer; }
+  button:hover:not([disabled]) { background: var(--sel); }
+  button[disabled] { opacity: .5; cursor: not-allowed; }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  button.icon { width: 24px; height: 22px; padding: 0; line-height: 20px; text-align: center; }
+  button.icon.off { opacity: .35; }
+  input[type=text], input[type=number], textarea, select { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+  input[type=number] { width: 64px; }
+  input[type=color] { width: 28px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: transparent; }
+  textarea { width: 100%; min-height: 60px; resize: vertical; }
+  #list { grid-area: list; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--panel); min-height: 0; }
+  #list input { margin: 8px; }
+  #list .rows { overflow: auto; flex: 1; }
+  #list .row { display: block; width: 100%; text-align: left; padding: 6px 12px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+  #list .row.active { background: var(--sel); }
+  #list small { color: var(--muted); display: block; }
+  .badge { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 11px; background: var(--sel); color: var(--accent); margin-right: 4px; }
+  #bar { grid-area: bar; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 8px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  #bar label { color: var(--muted); display: inline-flex; align-items: center; gap: 3px; }
+  #bar .sep { width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
+  #view { grid-area: view; position: relative; overflow: hidden; background: #888; cursor: grab; min-height: 0; }
+  #view { touch-action: none; }
+  #view.tool { cursor: crosshair; }
+  #view.brush { cursor: none; }
+  #view canvas { position: absolute; left: 0; top: 0; }
+  #view .hud { position: absolute; right: 8px; top: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  #side { grid-area: side; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; }
+  #side .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  #side .tabs button { flex: 1; border: 0; border-radius: 0; border-bottom: 2px solid transparent; padding: 7px 2px; }
+  #side .tabs button.active { border-bottom-color: var(--accent); color: var(--accent); background: transparent; }
+  #side .pane { overflow: auto; flex: 1; padding: 8px 10px; }
+  #side .pane[hidden] { display: none; }
+  #side h3 { margin: 10px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  #side h3:first-child { margin-top: 2px; }
+  dl { margin: 0; display: grid; grid-template-columns: 72px 1fr; gap: 2px 8px; }
+  dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+  .layer { display: grid; grid-template-columns: 24px 24px 1fr 52px 30px; gap: 3px; align-items: center; padding: 3px 2px; border-radius: 4px; cursor: pointer; }
+  .layer.selected { background: var(--sel); }
+  .layer .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .layer input.rename { width: 100%; }
+  .layer .opacity { width: 52px; padding: 2px 4px; }
+  .layer .arrows { display: flex; flex-direction: column; }
+  .layer .arrows button { width: 26px; height: 13px; padding: 0; line-height: 11px; font-size: 9px; border-radius: 3px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; align-items: center; }
+  .form { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; margin: 4px 0; }
+  .form label { color: var(--muted); }
+  .form .req { color: var(--bad); }
+  .form input[type=text], .form select { width: 100%; }
+  .gaps button { border-color: var(--gap); color: var(--gap); }
+  details summary { cursor: pointer; color: var(--muted); }
+  .thread { border-top: 1px solid var(--line); padding: 6px 0; }
+  .thread .meta, .msg .meta { color: var(--muted); font-size: 11px; }
+  .msg { border-top: 1px solid var(--line); padding: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg img { max-width: 100%; display: block; margin-top: 4px; border: 1px solid var(--line); }
+  pre.result { margin: 6px 0; padding: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; font: 11px ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+  pre.result img { max-width: 100%; }
+  #log { grid-area: log; border-top: 1px solid var(--line); background: var(--panel); }
+  #log summary { padding: 4px 10px; cursor: pointer; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  #log .cols { display: grid; grid-template-columns: 1fr 1fr 1.4fr; height: 170px; }
+  #log .cols > div { overflow: auto; padding: 6px 10px; border-right: 1px solid var(--line); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+  #log h4 { margin: 0 0 4px; font: 600 11px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .gapline { color: var(--gap); } .muted { color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; } td { padding: 1px 6px 1px 0; vertical-align: top; }
+  .yes { color: var(--ok); } .no { color: var(--bad); }
+  .tools td:first-child { font-family: ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <b>MCP Board Viewer</b>
+  <span class="status" id="status">every pixel and every action through the bridge</span>
+  <button id="undo" disabled title="undo_edit">↶ undo</button>
+  <button id="redo" disabled title="redo_edit">↷ redo</button>
+  <button id="reload" disabled title="open_drawing + capture_drawing again">⟳ reload</button>
+</header>
+<nav id="list"><input type="text" id="filter" placeholder="filter drawings…"><div class="rows" id="rows"></div></nav>
+<div id="bar">
+  <label>tool <select id="mode">
+    <option value="pan">pan / select (V)</option>
+    <option value="brush">brush (B) — draw_shapes path</option>
+    <option value="erase">eraser (E) — draw_shapes erase</option>
+    <option value="line">line (L) — draw_shapes line</option>
+    <option value="rect">rectangle (R) — draw_shape</option>
+    <option value="ellipse">ellipse (O) — draw_shape</option>
+    <option value="text">text (T) — draw_text</option>
+    <option value="fill">bucket (G) — fill_area</option>
+    <option value="pick">eyedropper (I) — pick_color</option>
+    <option value="selectRect">select rect (M) — select_rect</option>
+    <option value="selectEllipse">select ellipse — select_ellipse</option>
+    <option value="lasso">lasso (Q) — select_lasso (click points, double-click or Enter closes)</option>
+    <option value="paste">paste image — paste_image (drag the target rect)</option>
+  </select></label>
+  <label>colour <input type="color" id="color" value="#e74c3c"></label>
+  <label>size <input type="number" id="size" value="12" min="1" max="500" style="width:56px" title="[ and ] change it"></label>
+  <label>preset <select id="preset"><option value="">default brush</option></select></label>
+  <label><input type="checkbox" id="fillShape" checked> filled</label>
+  <label>text <input type="text" id="textValue" value="Hello" style="width:100px"></label>
+  <label>selection <select id="selMode"><option>replace</option><option>add</option><option>subtract</option><option>intersect</option></select></label>
+  <input type="file" id="pasteFile" accept="image/*" style="width:180px">
+  <span class="sep"></span>
+  <button id="selectAll" title="select_all">all</button><button id="deselect" title="deselect">none</button><button id="invertSel" title="invert_selection">invert</button><button id="deleteSel" class="danger" title="delete_selection">delete selected</button>
+</div>
+<main id="view"><canvas id="canvas"></canvas><div class="hud" id="hud">no drawing open</div></main>
+<aside id="side">
+  <div class="tabs"><button data-tab="layers" class="active">Layers</button><button data-tab="inspector">Selection</button><button data-tab="comments">Comments</button><button data-tab="chat">Chat</button><button data-tab="verbs">Verbs</button></div>
+  <div class="pane" id="layers">Open a drawing.</div>
+  <div class="pane" id="inspector" hidden>Nothing selected.</div>
+  <div class="pane" id="comments" hidden>—</div>
+  <div class="pane" id="chat" hidden></div>
+  <div class="pane" id="verbs" hidden></div>
+</aside>
+<details id="log" open>
+  <summary>Verbs used · gaps recorded · coverage</summary>
+  <div class="cols">
+    <div><h4>Verbs used</h4><div id="verbLog"></div></div>
+    <div><h4>Gaps recorded</h4><div id="gapsLog"></div></div>
+    <div><h4>Coverage: every verb the bridge offers</h4><div id="coverage"></div></div>
+  </div>
+</details>
+<script>
+// ---- state -----------------------------------------------------------------
+// Everything shown comes from the bridge: layers from open_drawing, the picture
+// from capture_drawing, the board's element kinds from list_board_elements.
+const state = { shortId: null, type: null, name: '', bounds: null, layers: [], elements: [], selectedId: null, solo: false, view: { x: 0, y: 0, w: 2000, h: 1200 }, image: null, imageRect: null, inFlight: false, again: false, timer: null, tools: [], rows: [], threads: [], lasso: [], gesture: null, chat: { channel: '', messages: [] }, presets: [] };
+const $ = id => document.getElementById(id);
+const canvas = $('canvas'), ctx = canvas.getContext('2d');
+const CAPTURE_MAX_DIM = 1400;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const status = (t, bad = false) => { const el = $('status'); el.textContent = t; el.classList.toggle('bad', bad); };
+const isBoard = () => state.type === 'Board';
+
+// The view lives in the URL — drawing, region and zoom — so a state can be copied and reopened as it was.
+function viewToUrl() {
+  if (!state.shortId) return;
+  const v = state.view; const q = new URLSearchParams({ board: state.shortId, x: Math.round(v.x), y: Math.round(v.y), w: Math.round(v.w), h: Math.round(v.h), maxDim: CAPTURE_MAX_DIM });
+  if (state.selectedId != null) q.set('layer', state.selectedId);
+  history.replaceState(null, '', '#' + q);
+}
+function viewFromUrl() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  if (!q.get('board')) return null;
+  const n = k => Number(q.get(k));
+  return { shortId: q.get('board'), view: { x: n('x'), y: n('y'), w: n('w'), h: n('h') }, layer: q.get('layer') ? Number(q.get('layer')) : null };
+}
+
+// ---- the bridge ----------------------------------------------------------------
+const api = (path, params) => fetch(path + (params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined)) : '')).then(r => r.json());
+/** A verb with its arguments, exactly as an agent would send it. */
+async function call(name, args) {
+  const res = await fetch('/api/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, args }) });
+  const body = await res.json();
+  if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`);
+  return body.result;
+}
+/** Run a verb, then read the drawing back and capture it again — the page never assumes a verb did what it says. */
+async function act(name, args, then, { reread = true } = {}) {
+  status(`${name}…`);
+  try {
+    const result = await call(name, args);
+    console.debug('[viewer] verb', name, args, result);
+    status(`${name} ok`);
+    if (then) then(result);
+    if (reread) await reopen();
+    return result;
+  } catch (e) {
+    console.warn('[viewer] verb failed', name, args, e.message);
+    status(`${name} failed: ${e.message}`, true);
+  } finally {
+    loadLog();
+  }
+}
+const paintLayer = () => state.selectedId ?? state.layers[0]?.id;
+
+// ---- drawings list ---------------------------------------------------------------
+async function loadDrawings() { state.rows = await api('/api/drawings', { limit: 100 }); renderRows(); }
+function renderRows() {
+  const f = $('filter').value.trim().toLowerCase();
+  const rows = state.rows.filter(r => (r.type === 'Board' || r.type === 'Drawing') && (!f || (r.name || '').toLowerCase().includes(f) || r.shortId.toLowerCase().includes(f)));
+  rows.sort((a, b) => (a.type === b.type ? 0 : a.type === 'Board' ? -1 : 1));
+  const box = $('rows'); box.innerHTML = '';
+  for (const row of rows) {
+    const b = document.createElement('button'); b.className = 'row' + (row.shortId === state.shortId ? ' active' : '');
+    b.innerHTML = `<span class="badge">${row.type === 'Board' ? 'board' : 'canvas'}</span>${esc(row.name || '(unnamed)')}<small>${row.shortId}</small>`;
+    b.onclick = () => openDrawing(row);
+    box.appendChild(b);
+  }
+  const hidden = state.rows.length - state.rows.filter(r => r.type === 'Board' || r.type === 'Drawing').length;
+  if (hidden) box.insertAdjacentHTML('beforeend', `<div class="muted" style="padding:6px 12px">${hidden} documents and models not listed</div>`);
+}
+$('filter').oninput = renderRows;
+
+async function openDrawing(row, keepView = false, selectId = null) {
+  state.shortId = row.shortId; state.type = row.type; state.name = row.name || ''; state.selectedId = selectId; state.solo = false; state.layers = []; state.elements = []; state.threads = []; state.lasso = [];
+  renderRows();
+  status(`open_drawing ${row.shortId}…`);
+  let info;
+  try { info = await call('open_drawing', { shortId: row.shortId }); }
+  catch (e) { status(`open_drawing failed: ${e.message}`, true); return; }
+  const w = info.width || 2000, h = info.height || 1200;
+  // A canvas has edges; a board does not. Only what lies inside a canvas can be captured.
+  state.bounds = row.type === 'Board' ? null : { x: 0, y: 0, w, h };
+  state.layers = info.layers || [];
+  const fit = Math.max(w / $('view').clientWidth, h / $('view').clientHeight);
+  if (!keepView) state.view = { x: 0, y: 0, w: $('view').clientWidth * fit, h: $('view').clientHeight * fit };
+  console.debug('[viewer] open', { board: row.shortId, type: row.type, width: w, height: h, layers: state.layers.length, users: info.users, view: { ...state.view } });
+  for (const b of ['undo', 'redo']) $(b).disabled = row.type !== 'Drawing';
+  $('reload').disabled = false;
+  if (isBoard()) await loadElements();
+  renderLayers(); renderInspector(); renderChat(); renderVerbs(); loadComments();
+  refresh();
+}
+/** Read the drawing back: layers, element kinds, comments, and the picture. */
+async function reopen({ capture = true } = {}) {
+  if (!state.shortId) return;
+  try {
+    const info = await call('open_drawing', { shortId: state.shortId });
+    state.layers = info.layers || [];
+    if (state.bounds) state.bounds = { x: 0, y: 0, w: info.width || state.bounds.w, h: info.height || state.bounds.h };
+  } catch (e) { status(`open_drawing failed: ${e.message}`, true); }
+  if (isBoard()) await loadElements();
+  if (state.selectedId != null && !state.layers.some(l => l.id === state.selectedId)) state.selectedId = null;
+  renderLayers(); renderInspector(); loadComments();
+  if (capture) refresh();
+}
+async function loadElements() {
+  try { const els = await call('list_board_elements', { boardId: state.shortId }); state.elements = els.elementBounds || []; }
+  catch (e) { state.elements = []; status(`list_board_elements failed: ${e.message}`, true); }
+}
+$('reload').onclick = () => reopen();
+$('undo').onclick = () => act('undo_edit', { drawingId: state.shortId });
+$('redo').onclick = () => act('redo_edit', { drawingId: state.shortId });
+
+// ---- capture: the picture is only ever what the bridge returns ------------------
+/** Resolves after a capture that started after now has landed — what a preview waits for before it goes. */
+const captureWaiters = [];
+function nextCapture(delay = 0) { return new Promise(resolve => { captureWaiters.push({ at: Date.now(), resolve }); refresh(delay); }); }
+function refresh(delay = 300) {
+  clearTimeout(state.timer);
+  state.timer = setTimeout(async () => {
+    if (!state.shortId) return;
+    // The attachment runs calls one at a time: a capture issued while one is
+    // still rendering only queues behind it. One in flight; a view change
+    // meanwhile is honoured once, when it lands.
+    if (state.inFlight) { state.again = true; return; }
+    state.inFlight = true;
+    const v = state.view; let r = { x: Math.round(v.x), y: Math.round(v.y), w: Math.round(v.w), h: Math.round(v.h) };
+    // The capture is asked only for the part of the view inside the canvas:
+    // a rect past an edge comes back as the clipped region in the asked size,
+    // which the page would otherwise stretch across the whole view.
+    if (state.bounds) {
+      const b = state.bounds; const x0 = Math.max(r.x, b.x), y0 = Math.max(r.y, b.y), x1 = Math.min(r.x + r.w, b.x + b.w), y1 = Math.min(r.y + r.h, b.y + b.h);
+      if (x1 - x0 < 1 || y1 - y0 < 1) { state.image = null; state.imageRect = null; state.inFlight = false; status('view is outside the canvas'); draw(); return; }
+      r = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+    const solo = state.solo && state.selectedId != null ? state.selectedId : undefined;
+    status(`capture_drawing ${r.w}×${r.h} at ${r.x},${r.y}${solo != null ? ` · layer ${solo} only` : ''}…`);
+    const t0 = performance.now(); const startedAt = Date.now();
+    try {
+      const captureUrl = `/api/capture?shortId=${state.shortId}&x=${r.x}&y=${r.y}&w=${r.w}&h=${r.h}&maxDim=${CAPTURE_MAX_DIM}${solo != null ? `&layerId=${solo}` : ''}`;
+      // A failed capture answers with JSON, not an image; the failure is shown and the last image kept.
+      const captureRes = await fetch(`${captureUrl}&t=${Date.now()}`);
+      const failure = (captureRes.headers.get('content-type') || '').includes('json') ? ((await captureRes.json()).error || `HTTP ${captureRes.status}`) : null;
+      const img = failure ? null : await new Promise(async resolve => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = URL.createObjectURL(await captureRes.blob()); });
+      const captureMs = Math.round(performance.now() - t0);
+      viewToUrl();
+      console.debug('[viewer] capture', { board: state.shortId, rect: r, layerId: solo, maxDim: CAPTURE_MAX_DIM, ms: captureMs, png: img ? [img.naturalWidth, img.naturalHeight] : failure || 'failed', screenZoom: +(canvas.width / state.view.w).toFixed(3), url: location.href, mcp: `capture_drawing ${JSON.stringify({ shortId: state.shortId, rect: r, maxDim: CAPTURE_MAX_DIM, ...(solo != null ? { layerId: solo } : {}) })}` });
+      if (failure) { console.warn('[viewer] capture failed', failure); status(`capture_drawing failed: ${failure}`, true); draw(); return; }
+      state.image = img; state.imageRect = r;
+      status(`capture_drawing ${captureMs} ms · ${img.naturalWidth}×${img.naturalHeight} px · ${state.layers.length} layers`);
+      draw(); loadLog();
+    } finally {
+      state.inFlight = false;
+      for (const w of captureWaiters.splice(0)) { if (w.at <= startedAt) w.resolve(); else captureWaiters.push(w); }
+      if (state.again) { state.again = false; refresh(); }
+    }
+  }, delay);
+}
+function toScreen(bx, by) { const v = state.view; const s = canvas.width / v.w; return [(bx - v.x) * s, (by - v.y) * s]; }
+function toBoard(e) { const rect = canvas.getBoundingClientRect(); const s = state.view.w / canvas.width; return { x: state.view.x + (e.clientX - rect.left) * s, y: state.view.y + (e.clientY - rect.top) * s }; }
+function layerRect(l) {
+  const el = state.elements.find(e => e.id === l.id);
+  return l.bounds || (el && { x: el.x, y: el.y, w: el.w, h: el.h }) || null;
+}
+function draw() {
+  const view = $('view'); canvas.width = view.clientWidth; canvas.height = view.clientHeight;
+  ctx.fillStyle = '#888'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const s = canvas.width / state.view.w;
+  if (state.image && state.imageRect) {
+    const [x, y] = toScreen(state.imageRect.x, state.imageRect.y);
+    ctx.drawImage(state.image, x, y, state.imageRect.w * s, state.imageRect.h * s);
+  }
+  if (state.bounds) {
+    const [x, y] = toScreen(0, 0); ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1; ctx.strokeRect(x, y, state.bounds.w * s, state.bounds.h * s);
+  }
+  for (const l of state.layers) {
+    const r = layerRect(l); if (!r) continue;
+    const [x, y] = toScreen(r.x, r.y);
+    const selected = l.id === state.selectedId;
+    if (!selected && !isBoard()) continue;
+    ctx.strokeStyle = selected ? '#2563eb' : 'rgba(37,99,235,.35)'; ctx.lineWidth = selected ? 2 : 1;
+    ctx.strokeRect(x, y, r.w * s, r.h * s);
+  }
+  // Comment threads sit where list_comments anchors them.
+  for (const t of state.threads) {
+    const at = t.anchor?.location; if (!at) continue;
+    const [x, y] = toScreen(at.x, at.y); const resolved = t.state === 'resolved';
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fillStyle = resolved ? 'rgba(107,114,128,.8)' : 'rgba(180,83,9,.9)'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  // Strokes already made, drawn locally with the brush's own size until the
+  // capture that holds them lands; then the gesture in progress; then the
+  // lasso outline being built.
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const strokePath = (points, color, size, alpha) => {
+    if (points.length < 2) return; ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, size * s);
+    ctx.beginPath(); points.forEach((p, i) => { const [x, y] = toScreen(p.x, p.y); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.restore();
+  };
+  for (const pv of strokes.preview) strokePath(pv.points, pv.erase ? '#888' : pv.color, pv.size, pv.erase ? .9 : pv.opacity);
+  const g = state.gesture;
+  if (g?.points) strokePath(g.points, g.erase ? '#888' : $('color').value, Number($('size').value), g.erase ? .9 : 1);
+  ctx.strokeStyle = $('color').value; ctx.lineWidth = 2; ctx.setLineDash([]);
+  if (g?.box) {
+    const b = normBox(g.box); const [x, y] = toScreen(b.x, b.y);
+    if (g.line) strokePath([{ x: g.box.x1, y: g.box.y1 }, { x: g.box.x2, y: g.box.y2 }], $('color').value, Number($('size').value), 1);
+    else if (g.ellipse) { ctx.beginPath(); ctx.ellipse(x + b.w * s / 2, y + b.h * s / 2, b.w * s / 2, b.h * s / 2, 0, 0, Math.PI * 2); ctx.stroke(); }
+    else ctx.strokeRect(x, y, b.w * s, b.h * s);
+  }
+  if (state.lasso.length) { ctx.setLineDash([4, 3]); ctx.beginPath(); state.lasso.forEach((p, i) => { const [x, y] = toScreen(p.x, p.y); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.setLineDash([]); }
+  // The brush cursor: a circle of the brush's size at the pointer.
+  if (state.pointer && ['brush', 'erase', 'line'].includes(mode()) && !isBoard()) {
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(state.pointer.x, state.pointer.y, Math.max(2, Number($('size').value) * s / 2), 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.beginPath(); ctx.arc(state.pointer.x, state.pointer.y, Math.max(3, Number($('size').value) * s / 2 + 1), 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
+  $('hud').textContent = state.shortId ? `${state.name} · ${Math.round(state.view.x)},${Math.round(state.view.y)}  ${Math.round(state.view.w)}×${Math.round(state.view.h)}  zoom ${(canvas.width / state.view.w).toFixed(2)}` : 'no drawing open';
+}
+const normBox = b => ({ x: Math.round(Math.min(b.x1, b.x2)), y: Math.round(Math.min(b.y1, b.y2)), w: Math.round(Math.abs(b.x2 - b.x1)), h: Math.round(Math.abs(b.y2 - b.y1)) });
+
+// ---- pointer: pan, or one of the editor's tools sent as a verb --------------------------
+const mode = () => $('mode').value;
+function setMode(m) { $('mode').value = m; $('mode').dispatchEvent(new Event('change')); }
+$('mode').onchange = () => { const m = mode(); $('view').classList.toggle('tool', m !== 'pan'); $('view').classList.toggle('brush', ['brush', 'erase', 'line'].includes(m)); state.lasso = []; draw(); };
+let drag = null, spaceHeld = false;
+const view = $('view');
+view.addEventListener('pointerdown', e => {
+  if (e.button === 2) return;
+  const m = mode(); const p = toBoard(e); view.setPointerCapture(e.pointerId);
+  // The middle button and a held space pan in any tool, as in the editor; a board takes no paint tool.
+  if (m === 'pan' || e.button === 1 || spaceHeld || isBoard()) { if (m !== 'pan' && isBoard()) status('this tool paints on a canvas; open one (double-click a card, or "open canvas" in Selection)', true); drag = { x: e.clientX, y: e.clientY, vx: state.view.x, vy: state.view.y, moved: false }; return; }
+  const pen = e.pointerType === 'pen';
+  if (m === 'brush' || m === 'erase') state.gesture = { points: [pen ? { ...p, pressure: e.pressure } : p], erase: m === 'erase', pen };
+  else if (m === 'line') state.gesture = { box: { x1: p.x, y1: p.y, x2: p.x, y2: p.y }, line: true };
+  else if (['rect', 'ellipse', 'selectRect', 'selectEllipse', 'paste'].includes(m)) state.gesture = { box: { x1: p.x, y1: p.y, x2: p.x, y2: p.y }, ellipse: m === 'ellipse' || m === 'selectEllipse' };
+  else state.gesture = { click: true }; // fill, eyedropper, text and lasso act on the release
+  draw();
+});
+view.addEventListener('pointermove', e => {
+  const rect = canvas.getBoundingClientRect(); state.pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  if (drag) { const s = state.view.w / canvas.width; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.hypot(dx, dy) > 3) drag.moved = true; state.view.x = drag.vx - dx * s; state.view.y = drag.vy - dy * s; draw(); return; }
+  const g = state.gesture; if (!g) { if (['brush', 'erase', 'line'].includes(mode())) draw(); return; }
+  // Every intermediate pointer sample goes into the path, not only the ones that reached a frame.
+  const samples = g.points && e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  for (const ev of samples.length ? samples : [e]) { const p = toBoard(ev); if (g.points) g.points.push(g.pen ? { ...p, pressure: ev.pressure } : p); else { g.box.x2 = p.x; g.box.y2 = p.y; } }
+  draw();
+});
+view.addEventListener('pointerleave', () => { state.pointer = null; draw(); });
+view.addEventListener('pointerup', async e => {
+  if (drag) { const moved = drag.moved; drag = null; if (moved) refresh(); else if (mode() === 'pan') pick(e); return; }
+  const g = state.gesture; if (!g) return; state.gesture = null;
+  if (g.click) { draw(); return pointerClick(e); }
+  const d = state.shortId, m = mode(), color = $('color').value, size = Number($('size').value);
+  if (m === 'brush' || m === 'erase') {
+    const points = g.points.map(p => ({ x: Math.round(p.x), y: Math.round(p.y), ...(p.pressure != null ? { pressure: +p.pressure.toFixed(3) } : {}) }));
+    if (points.length < 2) points.push({ ...points[0], x: points[0].x + 1 });
+    return queueStroke({ kind: 'path', points }, { erase: m === 'erase', pen: g.pen }, { points, color, size, erase: m === 'erase', opacity: 1 });
+  }
+  if (m === 'line') {
+    const l = { x1: Math.round(g.box.x1), y1: Math.round(g.box.y1), x2: Math.round(g.box.x2), y2: Math.round(g.box.y2) };
+    return queueStroke({ kind: 'line', ...l }, {}, { points: [{ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 }], color, size, opacity: 1 });
+  }
+  draw();
+  const b = normBox(g.box); if (b.w < 2 || b.h < 2) return status('drag out a box first');
+  const layerId = paintLayer();
+  if (m === 'rect' || m === 'ellipse') return act('draw_shape', { drawingId: d, layerId, kind: m, ...b, fill: $('fillShape').checked, strokeWidth: size, color });
+  if (m === 'selectRect' || m === 'selectEllipse') return act(m === 'selectRect' ? 'select_rect' : 'select_ellipse', { drawingId: d, ...b, mode: $('selMode').value }, null, { reread: false });
+  if (m === 'paste') {
+    const file = $('pasteFile').files[0]; if (!file) return status('choose an image file in the toolbar first', true);
+    const png = await fileToBase64(file);
+    return act('paste_image', { drawingId: d, png, rect: b, name: file.name });
+  }
+});
+view.addEventListener('contextmenu', e => e.preventDefault());
+
+// ---- strokes: previewed at once, sent in batches, the picture caught up once per batch ---------
+// A stroke shows on the picture the moment it ends, in the brush's own colour and
+// size, and stays until the capture that holds it lands. While the bridge is busy
+// with one batch the strokes that follow queue up and go as one draw_shapes call,
+// so a fast hand is never waiting on a round trip per stroke.
+const strokes = { queue: [], preview: [], sending: false };
+function brushArgs({ erase, pen }) {
+  return { drawingId: state.shortId, layerId: paintLayer(), color: $('color').value, size: Number($('size').value), ...($('preset').value ? { preset: $('preset').value } : {}), ...(erase ? { mode: 'erase' } : {}), ...(pen ? { sizePressure: true } : {}) };
+}
+function queueStroke(shape, options, preview) {
+  const args = brushArgs(options); const entry = { shape, args, key: JSON.stringify(args), preview };
+  strokes.queue.push(entry); strokes.preview.push(preview); draw();
+  pumpStrokes();
+}
+async function pumpStrokes() {
+  if (strokes.sending || !strokes.queue.length) return;
+  strokes.sending = true;
+  const key = strokes.queue[0].key; const batch = [];
+  while (strokes.queue.length && strokes.queue[0].key === key) batch.push(strokes.queue.shift());
+  const args = { ...batch[0].args, shapes: batch.map(b => b.shape) };
+  status(`draw_shapes · ${batch.length} stroke${batch.length > 1 ? 's' : ''}…`);
+  try {
+    const result = await call('draw_shapes', args);
+    console.debug('[viewer] verb', 'draw_shapes', args, result);
+    status(`draw_shapes ok · ${batch.length} stroke${batch.length > 1 ? 's' : ''}`);
+  } catch (e) {
+    console.warn('[viewer] verb failed', 'draw_shapes', args, e.message);
+    status(`draw_shapes failed: ${e.message}`, true);
+    strokes.preview = strokes.preview.filter(p => !batch.some(b => b.preview === p)); draw();
+  } finally {
+    strokes.sending = false; loadLog();
+  }
+  if (strokes.queue.length) return pumpStrokes();
+  // The queue is empty: one capture for the whole run, then the previews go — the
+  // picture now holds them. The layer list follows, without a second capture.
+  await nextCapture();
+  strokes.preview = strokes.queue.length ? strokes.preview : []; draw();
+  if (!strokes.queue.length) reopen({ capture: false });
+}
+
+async function pointerClick(e) {
+  const m = mode(); const b = toBoard(e); const p = { x: Math.round(b.x), y: Math.round(b.y) }; const d = state.shortId;
+  if (isBoard()) return;
+  if (m === 'fill') return act('fill_area', { drawingId: d, layerId: paintLayer(), x: p.x, y: p.y, color: $('color').value });
+  if (m === 'pick') return act('pick_color', { drawingId: d, x: p.x, y: p.y }, r => { const hex = r.hex || r.color; if (typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex)) $('color').value = hex; status(`pick_color ${JSON.stringify(r)}`); }, { reread: false });
+  if (m === 'text') return act('draw_text', { drawingId: d, text: $('textValue').value || 'Text', x: p.x, y: p.y, size: Math.max(4, Number($('size').value) * 2), color: $('color').value });
+  if (m === 'lasso') {
+    if (e.detail >= 2) return closeLasso();
+    state.lasso.push(p); draw();
+  }
+}
+function closeLasso() {
+  if (state.lasso.length < 3) return status('a lasso needs three points or more');
+  const points = state.lasso; state.lasso = []; draw();
+  return act('select_lasso', { drawingId: state.shortId, points, mode: $('selMode').value }, null, { reread: false });
+}
+view.addEventListener('wheel', e => { e.preventDefault(); const f = e.deltaY > 0 ? 1.15 : 1 / 1.15; const rect = canvas.getBoundingClientRect(); const px = (e.clientX - rect.left) / canvas.width, py = (e.clientY - rect.top) / canvas.height; const v = state.view; const nw = v.w * f, nh = v.h * f; v.x += (v.w - nw) * px; v.y += (v.h - nh) * py; v.w = nw; v.h = nh; draw(); refresh(); }, { passive: false });
+window.addEventListener('resize', () => { draw(); refresh(); });
+$('selectAll').onclick = () => act('select_all', { drawingId: state.shortId }, null, { reread: false });
+$('deselect').onclick = () => act('deselect', { drawingId: state.shortId }, null, { reread: false });
+$('invertSel').onclick = () => act('invert_selection', { drawingId: state.shortId }, null, { reread: false });
+$('deleteSel').onclick = () => act('delete_selection', { drawingId: state.shortId, layerId: paintLayer() });
+
+// ---- keyboard: the editor's shortcuts -------------------------------------------------------
+const SHORTCUTS = { v: 'pan', b: 'brush', e: 'erase', l: 'line', r: 'rect', o: 'ellipse', t: 'text', g: 'fill', i: 'pick', m: 'selectRect', q: 'lasso' };
+window.addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+  if (e.code === 'Space' && !typing) { spaceHeld = true; e.preventDefault(); return; }
+  if (typing || !state.shortId) return;
+  const meta = e.metaKey || e.ctrlKey; const k = e.key.toLowerCase();
+  if (meta && k === 'z') { e.preventDefault(); return isBoard() ? undefined : act(e.shiftKey ? 'redo_edit' : 'undo_edit', { drawingId: state.shortId }); }
+  if (meta && k === 'a') { e.preventDefault(); return isBoard() ? undefined : $('selectAll').click(); }
+  if (meta && k === 'd') { e.preventDefault(); return isBoard() ? undefined : $('deselect').click(); }
+  if (meta) return;
+  if (k === 'escape') { state.lasso = []; state.gesture = null; draw(); return; }
+  if (k === 'enter' && mode() === 'lasso') return closeLasso();
+  if ((k === 'delete' || k === 'backspace') && !isBoard()) return $('deleteSel').click();
+  if (k === '[' || k === ']') { const sz = $('size'); sz.value = Math.max(1, Math.min(500, Math.round(Number(sz.value) * (k === ']' ? 1.25 : 0.8)))); draw(); return; }
+  if (SHORTCUTS[k]) setMode(SHORTCUTS[k]);
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space') spaceHeld = false; });
+const fileToBase64 = file => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(',')[1]); r.onerror = reject; r.readAsDataURL(file); });
+async function loadPresets() {
+  try {
+    const listed = await call('list_brush_presets', {});
+    state.presets = Array.isArray(listed) ? listed : listed.presets || [];
+    $('preset').innerHTML = '<option value="">default brush</option>' + state.presets.map(p => { const name = p.set ? `${p.set}/${p.name}` : p.name; return `<option value="${esc(name)}">${esc(name)}</option>`; }).join('');
+  } catch (e) { status(`list_brush_presets failed: ${e.message}`, true); }
+  loadLog();
+}
+function pick(e) {
+  const b = toBoard(e);
+  const hits = state.layers.map(l => ({ l, r: layerRect(l) })).filter(({ r }) => r && b.x >= r.x && b.x <= r.x + r.w && b.y >= r.y && b.y <= r.y + r.h).sort((a, c) => a.r.w * a.r.h - c.r.w * c.r.h);
+  select(hits[0] ? hits[0].l.id : null);
+}
+$('view').addEventListener('dblclick', () => {
+  if (mode() !== 'pan' || !isBoard()) return;
+  const el = elementOf(state.selectedId);
+  if (el?.drawingId) openDrawing({ shortId: el.drawingId, type: 'Drawing', name: el.name || el.drawingId });
+});
+function select(id, showTab = false) {
+  state.selectedId = id; viewToUrl(); draw(); renderLayers(); renderInspector();
+  if (showTab && id != null) showPane('inspector');
+  if (state.solo) refresh();
+}
+function centerOn(id) {
+  const l = state.layers.find(x => x.id === id); const r = l && layerRect(l); if (!r) return;
+  const v = state.view; v.x = r.x + r.w / 2 - v.w / 2; v.y = r.y + r.h / 2 - v.h / 2; draw(); refresh();
+}
+
+// ---- tabs ------------------------------------------------------------------------
+function showPane(name) {
+  for (const b of document.querySelectorAll('#side .tabs button')) b.classList.toggle('active', b.dataset.tab === name);
+  for (const p of ['layers', 'inspector', 'comments', 'chat', 'verbs']) $(p).hidden = p !== name;
+}
+for (const b of document.querySelectorAll('#side .tabs button')) b.onclick = () => showPane(b.dataset.tab);
+
+// ---- layers: open_drawing's list, top first, each row's controls a set_layer or reorder_layers call
+// The blend modes are the ones set_layer's own description names.
+function blendModes() {
+  const field = state.tools.find(t => t.name === 'set_layer')?.inputSchema?.properties?.mode;
+  if (field?.enum) return field.enum;
+  const named = /Blend mode:\s*([^.]*)/.exec(field?.description || '')?.[1];
+  return named ? named.split(/,|\bor\b/).map(m => m.trim()).filter(Boolean) : ['normal', 'multiply', 'screen', 'overlay'];
+}
+function elementOf(id) { return state.elements.find(e => e.id === id); }
+function renderLayers() {
+  const box = $('layers');
+  if (!state.shortId) { box.textContent = 'Open a drawing.'; return; }
+  const head = isBoard()
+    ? `<div class="actions"><button id="addNote">+ note</button><button id="addSection">+ section</button><button id="addDoc">+ document</button><button id="addCanvas">+ canvas</button></div>`
+    : `<div class="actions"><button id="addLayer">+ layer</button><button id="resizeBtn">resize canvas</button><label><input type="checkbox" id="soloBox" ${state.solo ? 'checked' : ''}> capture selected layer only</label></div>`;
+  const rows = state.layers.map(l => {
+    const el = elementOf(l.id); const kind = el?.type || (isBoard() ? 'layer' : 'paint');
+    const label = l.name || el?.name || el?.text?.slice(0, 40) || `layer ${l.id}`;
+    return `<div class="layer ${l.id === state.selectedId ? 'selected' : ''}" data-id="${l.id}" title="layer ${l.id}${l.owner ? ` · owner ${esc(l.owner)}` : ''}">
+      <button class="icon ${l.visible === false ? 'off' : ''}" data-act="visible" title="set_layer visible">👁</button>
+      <button class="icon ${l.locked ? '' : 'off'}" data-act="locked" title="set_layer locked">🔒</button>
+      <span class="name" data-act="rename" title="double-click to rename (set_layer name)">${isBoard() ? `<span class="badge">${esc(kind)}</span>` : ''}${esc(label)}</span>
+      <input class="opacity" type="number" min="0" max="100" step="5" value="${Math.round((l.opacity ?? 1) * 100)}" data-act="opacity" title="set_layer opacity">
+      <span class="arrows"><button data-act="up" title="reorder_layers">▲</button><button data-act="down" title="reorder_layers">▼</button></span>
+    </div>`;
+  }).join('');
+  box.innerHTML = head + `<h3>${state.layers.length} layers, top first</h3>` + (rows || '<div class="muted">no layers</div>');
+  const v = state.view; const c = { x: Math.round(v.x + v.w / 2), y: Math.round(v.y + v.h / 2) };
+  $('addLayer') && ($('addLayer').onclick = () => act('create_layer', { drawingId: state.shortId, name: `Layer ${state.layers.length + 1}` }, r => { state.selectedId = r.layerId ?? state.selectedId; }));
+  $('resizeBtn') && ($('resizeBtn').onclick = () => { showPane('verbs'); renderVerbs('resize_canvas'); });
+  $('soloBox') && ($('soloBox').onchange = e => { state.solo = e.target.checked; refresh(); });
+  $('addNote') && ($('addNote').onclick = () => act('add_note', { boardId: state.shortId, text: 'New note', x: c.x - 160, y: c.y - 100, w: 320, h: 200 }, r => { state.selectedId = r.layerId ?? null; }));
+  $('addSection') && ($('addSection').onclick = () => act('create_section', { boardId: state.shortId, name: 'New section', x: Math.round(v.x + v.w / 4), y: Math.round(v.y + v.h / 4), w: Math.round(v.w / 2), h: Math.round(v.h / 2), color: '#7F8C8D' }));
+  $('addDoc') && ($('addDoc').onclick = () => act('write_document', { boardId: state.shortId, content: '# New document\n\nWritten from the viewer.', x: c.x - 450, y: c.y - 300 }));
+  $('addCanvas') && ($('addCanvas').onclick = () => act('create_canvas', { boardId: state.shortId, name: 'New canvas', width: 1024, height: 768, background: '#ffffff', x: c.x - 512, y: c.y - 384 }));
+  for (const row of box.querySelectorAll('.layer')) {
+    const id = Number(row.dataset.id); const layer = state.layers.find(l => l.id === id);
+    row.onclick = e => { if (e.target.dataset.act && e.target.dataset.act !== 'rename') return; select(id); };
+    row.ondblclick = e => { if (e.target.closest('[data-act=rename]')) return; centerOn(id); };
+    row.querySelector('[data-act=visible]').onclick = () => act('set_layer', { drawingId: state.shortId, layerId: id, visible: layer.visible === false });
+    row.querySelector('[data-act=locked]').onclick = () => act('set_layer', { drawingId: state.shortId, layerId: id, locked: !layer.locked });
+    row.querySelector('[data-act=opacity]').onchange = e => act('set_layer', { drawingId: state.shortId, layerId: id, opacity: Math.max(0, Math.min(100, Number(e.target.value))) / 100 });
+    row.querySelector('[data-act=up]').onclick = () => move(id, -1);
+    row.querySelector('[data-act=down]').onclick = () => move(id, 1);
+    row.querySelector('[data-act=rename]').ondblclick = e => { e.stopPropagation(); rename(row, layer); };
+  }
+}
+function rename(row, layer) {
+  const span = row.querySelector('.name'); const input = document.createElement('input'); input.type = 'text'; input.className = 'rename'; input.value = layer.name || '';
+  span.replaceWith(input); input.focus(); input.select();
+  const done = save => { if (save && input.value.trim() && input.value !== layer.name) act('set_layer', { drawingId: state.shortId, layerId: layer.id, name: input.value.trim() }); else renderLayers(); };
+  input.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+  input.onblur = () => done(true);
+}
+function move(id, delta) {
+  const order = state.layers.map(l => l.id); const i = order.indexOf(id); const j = i + delta;
+  if (i < 0 || j < 0 || j >= order.length) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  act('reorder_layers', { drawingId: state.shortId, order });
+}
+
+// ---- inspector: what is selected, and the verbs that apply to it ----------------------
+// Intents the browser offers that no verb serves; pressing one records a gap.
+const GAPS = {
+  '*': ['hide only for me', 'duplicate this card', 'move to another board', 'group with others'],
+  canvas: ['rename the canvas itself', 'change the card\'s aspect / crop'],
+  sticky: ['change note colour'],
+  section: ['recolour section'],
+  paint: ['edit a text layer', 'transfer layer to another drawing', 'kick layer owner'],
+};
+function renderInspector() {
+  const box = $('inspector');
+  // A draft typed into the pane survives the re-render that follows every verb.
+  const drafts = Object.fromEntries([...box.querySelectorAll('textarea')].map(t => [t.id, t.value]));
+  const restore = () => { for (const [id, v] of Object.entries(drafts)) if ($(id) && v) $(id).value = v; };
+  const l = state.layers.find(x => x.id === state.selectedId);
+  if (!l) {
+    box.innerHTML = `<div class="muted">Click a layer in the list or on the picture.</div>${state.shortId ? `<div class="actions"><button id="infoBtn" title="get_drawing">get_drawing info</button></div><pre class="result" id="infoOut" hidden></pre>` : ''}`;
+    if ($('infoBtn')) $('infoBtn').onclick = () => act('get_drawing', { shortId: state.shortId }, r => { $('infoOut').hidden = false; $('infoOut').textContent = JSON.stringify(r, null, 2); }, { reread: false });
+    return;
+  }
+  const el = elementOf(l.id); const r = layerRect(l) || {};
+  const kind = el?.type || (isBoard() ? 'layer' : 'paint');
+  let html = `<h3>${esc(kind)} · layer ${l.id}</h3><dl><dt>name</dt><dd>${esc(l.name || el?.name || '—')}</dd>${el?.text ? `<dt>text</dt><dd>${esc(el.text.slice(0, 120))}</dd>` : ''}<dt>rect</dt><dd>${r.x ?? '—'},${r.y ?? '—'} ${r.w ?? '—'}×${r.h ?? '—'}</dd>${el?.drawingId ? `<dt>canvas</dt><dd>${esc(el.drawingId)}</dd>` : ''}${el?.documentId ? `<dt>document</dt><dd>${esc(el.documentId)}</dd>` : ''}${l.owner ? `<dt>owner</dt><dd>${esc(l.owner)}</dd>` : ''}${l.mode ? `<dt>mode</dt><dd>${esc(l.mode)}</dd>` : ''}</dl>`;
+  html += `<h3>Layer</h3><div class="form"><label>blend</label><select id="modeSel">${blendModes().map(m => `<option ${m === (l.mode || 'normal') ? 'selected' : ''}>${m}</option>`).join('')}</select>
+    <label>clip</label><label><input type="checkbox" id="clipBox" ${l.clippingGroup ? 'checked' : ''}> clip to the layer below</label></div>`;
+  if (!isBoard()) {
+    html += `<div class="actions"><button id="dupBtn" title="duplicate_layer">duplicate</button><button id="mergeBtn" title="merge_layer_down">merge down</button><button id="trimBtn" title="trim_layer">trim</button><button id="copyBtn" title="copy_layer">copy pixels</button><button id="clearBtn" class="danger" title="clear_layer">clear</button><button id="removeBtn" class="danger" title="remove_layers">remove</button></div><pre class="result" id="copyOut" hidden></pre>
+      <h3>Transform (transform_layer)</h3><div class="form"><label>dx, dy</label><span><input type="number" id="tdx" value="0"> <input type="number" id="tdy" value="0"></span><label>rotate °</label><input type="number" id="trot" value="0"><label>scale</label><input type="number" id="tscale" value="1" step="0.1" min="0.01"><label>flip</label><select id="tflip"><option value="">none</option><option>horizontal</option><option>vertical</option></select></div><div class="actions"><button id="transformBtn">apply</button></div>
+      <h3>Filter (apply_filter)</h3><div class="form"><label>filter</label><select id="filterSel"><option value="gaussianBlur">gaussianBlur</option><option value="motionBlur">motionBlur</option><option value="hueSaturationLightness">hueSaturationLightness</option><option value="brightnessContrast">brightnessContrast</option></select><label>radius</label><input type="number" id="fRadius" value="8"><label>distance, angle</label><span><input type="number" id="fDistance" value="40"> <input type="number" id="fAngle" value="0"></span><label>hue, sat, light</label><span><input type="number" id="fHue" value="0" style="width:52px"> <input type="number" id="fSat" value="0" style="width:52px"> <input type="number" id="fLight" value="0" style="width:52px"></span><label>bright, contrast</label><span><input type="number" id="fBright" value="0"> <input type="number" id="fContrast" value="0"></span></div><div class="actions"><button id="filterBtn">apply</button></div>`;
+  } else {
+    const isCard = ['canvas', 'video', 'model3d'].includes(kind);
+    html += `<h3>Place (${isCard ? 'place_card' : 'move_board_object'})</h3><div class="form"><label>x, y</label><span><input type="number" id="px" value="${r.x ?? 0}"> <input type="number" id="py" value="${r.y ?? 0}"></span><label>w${isCard ? '' : ', h'}</label><span><input type="number" id="pw" value="${r.w ?? 0}">${isCard ? '' : ` <input type="number" id="ph" value="${r.h ?? 0}">`}</span></div><div class="actions"><button id="placeBtn">apply</button>${el?.drawingId ? `<button id="openBtn">open canvas</button>` : ''}<button id="removeBtn" class="danger" title="remove_layers">remove</button></div>`;
+    if (kind === 'sticky') html += `<h3>Note (edit_note)</h3><textarea id="noteText">${esc(el?.text || '')}</textarea><div class="actions"><button id="noteBtn">save text</button></div>`;
+    if (kind === 'document') html += `<h3>Document (read_document / write_document)</h3><textarea id="docText" placeholder="loading…"></textarea><div class="actions"><button id="docBtn">save content</button></div>`;
+  }
+  html += `<h3>Comment (add_comment)</h3><textarea id="commentText" placeholder="comment at the centre of this ${isBoard() ? 'element' : 'layer'}"></textarea><div class="actions"><button id="commentBtn">post</button></div>`;
+  const gaps = [...GAPS['*'], ...(GAPS[kind] || [])];
+  html += `<details><summary>Intents with no verb (${gaps.length})</summary><div class="gaps actions">${gaps.map(g => `<button data-gap="${esc(g)}">${esc(g)}</button>`).join('')}</div></details>`;
+  box.innerHTML = html; restore();
+  const d = state.shortId, id = l.id;
+  $('modeSel').onchange = e => act('set_layer', { drawingId: d, layerId: id, mode: e.target.value });
+  $('clipBox').onchange = e => act('set_layer', { drawingId: d, layerId: id, clippingGroup: e.target.checked });
+  const confirmTwice = (btn, fn) => { btn.onclick = () => { if (btn.dataset.armed) return fn(); btn.dataset.armed = '1'; btn.textContent = `${btn.textContent}? click again`; setTimeout(() => { delete btn.dataset.armed; renderInspector(); }, 3000); }; };
+  if ($('removeBtn')) confirmTwice($('removeBtn'), () => act('remove_layers', { drawingId: d, layerIds: [id] }, () => { state.selectedId = null; }));
+  if (!isBoard()) {
+    $('dupBtn').onclick = () => act('duplicate_layer', { drawingId: d, layerId: id });
+    $('mergeBtn').onclick = () => act('merge_layer_down', { drawingId: d, layerId: id });
+    $('trimBtn').onclick = () => act('trim_layer', { drawingId: d, layerId: id });
+    $('copyBtn').onclick = () => act('copy_layer', { drawingId: d, layerId: id }, res => { const out = $('copyOut'); out.hidden = false; const png = res.png || res.data; out.innerHTML = `${esc(JSON.stringify({ ...res, png: png ? `${png.length} chars base64` : undefined }))}${png ? `<br><img src="data:image/png;base64,${png}">` : ''}`; }, { reread: false });
+    confirmTwice($('clearBtn'), () => act('clear_layer', { drawingId: d, layerId: id }));
+    $('transformBtn').onclick = () => { const n = k => Number($(k).value); const args = { drawingId: d, layerId: id }; if (n('tdx')) args.dx = n('tdx'); if (n('tdy')) args.dy = n('tdy'); if (n('trot')) args.rotate = n('trot'); if (n('tscale') !== 1) args.scale = n('tscale'); if ($('tflip').value) args.flip = $('tflip').value; act('transform_layer', args); };
+    $('filterBtn').onclick = () => { const n = k => Number($(k).value); const f = $('filterSel').value; const args = { drawingId: d, layerId: id, filter: f }; if (f === 'gaussianBlur') args.radius = n('fRadius'); if (f === 'motionBlur') { args.distance = n('fDistance'); args.angle = n('fAngle'); } if (f === 'hueSaturationLightness') { args.hue = n('fHue'); args.saturation = n('fSat'); args.lightness = n('fLight'); } if (f === 'brightnessContrast') { args.brightness = n('fBright'); args.contrast = n('fContrast'); } act('apply_filter', args); };
+  } else {
+    const isCard = ['canvas', 'video', 'model3d'].includes(kind); const n = k => Number($(k).value);
+    $('placeBtn').onclick = () => isCard
+      ? act('place_card', { boardId: d, drawingId: el.drawingId, x: n('px'), y: n('py'), w: n('pw') })
+      : act('move_board_object', { boardId: d, layerId: id, x: n('px'), y: n('py'), w: n('pw'), h: n('ph') });
+    if ($('openBtn')) $('openBtn').onclick = () => openDrawing({ shortId: el.drawingId, type: 'Drawing', name: el.name || el.drawingId });
+    if ($('noteBtn')) $('noteBtn').onclick = () => act('edit_note', { boardId: d, layerId: id, text: $('noteText').value });
+    if ($('docText')) {
+      call('read_document', { documentId: el.documentId }).then(doc => { if (!$('docText').value) $('docText').value = typeof doc === 'string' ? doc : (doc.content ?? JSON.stringify(doc)); }).catch(e => { $('docText').placeholder = `read_document failed: ${e.message}`; });
+      $('docBtn').onclick = () => act('write_document', { boardId: d, documentId: el.documentId, content: $('docText').value });
+    }
+  }
+  $('commentBtn').onclick = () => {
+    const text = $('commentText').value.trim(); if (!text) return;
+    const c = r.w ? { x: Math.round(r.x + r.w / 2), y: Math.round(r.y + r.h / 2) } : { x: Math.round(state.bounds ? state.bounds.w / 2 : state.view.x + state.view.w / 2), y: Math.round(state.bounds ? state.bounds.h / 2 : state.view.y + state.view.h / 2) };
+    act('add_comment', { drawingId: d, text, ...c, ...(el?.drawingId ? { canvasId: el.drawingId } : {}) }, () => showPane('comments'));
+  };
+  for (const b of box.querySelectorAll('[data-gap]')) b.onclick = async () => {
+    await fetch('/api/gap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intent: b.dataset.gap, element: { type: kind, id, name: l.name }, board: state.shortId }) });
+    b.textContent = `✓ ${b.dataset.gap}`; loadLog();
+  };
+}
+
+// ---- comments: list_comments, reply_comment, resolve_comment ---------------------------
+async function loadComments() {
+  const box = $('comments');
+  try {
+    const threads = await call('list_comments', { drawingId: state.shortId });
+    state.threads = Array.isArray(threads) ? threads : threads.threads || [];
+  } catch (e) { box.innerHTML = `<div class="bad">list_comments failed: ${esc(e.message)}</div>`; return; }
+  draw();
+  if (!state.threads.length) { box.innerHTML = '<div class="muted">No comment threads. Select an element to comment on it.</div>'; return; }
+  // A thread as list_comments reports it: threadId, text, author, state, anchor.location.
+  box.innerHTML = state.threads.map(t => { const at = t.anchor?.location; const resolved = t.state === 'resolved'; return `<div class="thread" data-id="${esc(t.threadId || t.id)}">
+    <div>${esc(t.text || t.message || '')}</div>
+    <div class="meta">${t.author ? esc(t.author) + ' · ' : ''}${at ? `${Math.round(at.x)},${Math.round(at.y)} · ` : ''}${t.messages ?? 1} messages${resolved ? ' · resolved' : ''}</div>
+    <div class="actions"><input type="text" class="replyText" placeholder="reply…"><button data-act="reply">reply</button><button data-act="resolve">${resolved ? 'reopen' : 'resolve'}</button></div>
+  </div>`; }).join('');
+  for (const row of box.querySelectorAll('.thread')) {
+    const threadId = row.dataset.id; const t = state.threads.find(x => String(x.threadId || x.id) === threadId);
+    row.querySelector('[data-act=reply]').onclick = () => { const text = row.querySelector('.replyText').value.trim(); if (text) act('reply_comment', { threadId, text }); };
+    row.querySelector('[data-act=resolve]').onclick = () => act('resolve_comment', { threadId, resolved: t.state !== 'resolved' });
+  }
+}
+
+// ---- chat: create_ai_session, send_message, get_messages, read_message_image, undo_agent_edits
+function renderChat() {
+  const box = $('chat'); const c = state.chat;
+  const draft = $('chatText')?.value || '';
+  box.innerHTML = `<div class="actions"><button id="newSession" title="create_ai_session">new Mirva session${isBoard() ? ' on this board' : ''}</button><input type="text" id="channel" placeholder="channel, e.g. ai-session/… or drawing/${esc(state.shortId || 'shortId')}" value="${esc(c.channel)}" style="flex:1"><button id="readChat" title="get_messages">read</button></div>
+    <textarea id="chatText" placeholder="message (send_message)"></textarea><div class="actions"><input type="file" id="chatFile" accept="image/*" style="width:170px"><button id="sendChat">send</button></div>
+    <h3>Messages</h3><div id="messages"></div>`;
+  $('chatText').value = draft;
+  $('newSession').onclick = () => act('create_ai_session', isBoard() ? { boardId: state.shortId } : {}, r => { c.channel = r.channelName || r.channel || ''; c.messages = []; renderChat(); }, { reread: false });
+  $('channel').onchange = e => { c.channel = e.target.value.trim(); };
+  $('readChat').onclick = readChat;
+  $('sendChat').onclick = async () => {
+    c.channel = $('channel').value.trim(); const message = $('chatText').value.trim(); if (!c.channel || !message) return status('a channel and a message are needed', true);
+    const file = $('chatFile').files[0]; const images = file ? [{ data: await fileToBase64(file), name: file.name, mimeType: file.type || 'image/png' }] : undefined;
+    await act('send_message', { channelName: c.channel, message, ...(images ? { images } : {}) }, () => { $('chatText').value = ''; }, { reread: false });
+    readChat();
+  };
+  renderMessages();
+}
+async function readChat() {
+  const c = state.chat; c.channel = $('channel').value.trim(); if (!c.channel) return status('a channel is needed', true);
+  const r = await act('get_messages', { channelName: c.channel, limit: 30 }, null, { reread: false });
+  if (r) { c.messages = Array.isArray(r) ? r : r.messages || []; renderMessages(); }
+}
+// A message as get_messages reports it: _id, userId, message, createdAt; an
+// agent reply also carries what it ran and the images it produced.
+const AGENT_USER = /^0+[0-9a-f]$/i;
+function renderMessages() {
+  const box = $('messages'); if (!box) return; const ms = state.chat.messages;
+  if (!ms.length) { box.innerHTML = '<div class="muted">nothing read yet</div>'; return; }
+  box.innerHTML = ms.map((m, i) => {
+    const id = m.messageId || m._id; const agent = !!(m.tools || m.producedImages || m.agent || AGENT_USER.test(m.userId || ''));
+    const files = m.files || m.producedImages || m.attachments || [];
+    return `<div class="msg" data-i="${i}"><div class="meta">${agent ? 'Mirva' : esc(m.author || m.userId || m.role || '')}${m.createdAt ? ` · ${esc(new Date(m.createdAt).toLocaleTimeString())}` : ''}${id ? ` · ${esc(id)}` : ''}${m.tools?.length ? ` · ran ${esc(m.tools.map(t => t.name || t).join(', '))}` : ''}</div>${esc(m.message || m.text || '')}
+    <div class="actions">${files.map(f => `<button data-file="${esc(f.fileId || f.id || f)}" title="read_message_image">${esc(f.name || 'image')}</button>`).join('')}${id && agent ? `<button data-undo="${esc(id)}" class="danger" title="undo_agent_edits">undo this turn's edits</button>` : ''}</div><div class="imgs"></div></div>`;
+  }).join('');
+  for (const b of box.querySelectorAll('[data-file]')) b.onclick = () => act('read_message_image', { fileId: b.dataset.file }, r => { const png = r.png || r.data || r.image; if (png) b.closest('.msg').querySelector('.imgs').insertAdjacentHTML('beforeend', `<img src="data:${r.mimeType || 'image/png'};base64,${png}">`); }, { reread: false });
+  for (const b of box.querySelectorAll('[data-undo]')) b.onclick = () => act('undo_agent_edits', { messageId: b.dataset.undo });
+}
+
+// ---- verbs: every tool the bridge offers, as a form built from its own schema ---------------
+function contextFor(key) {
+  const v = state.view;
+  if (key === 'drawingId' || key === 'shortId') return state.shortId ?? '';
+  if (key === 'boardId') return isBoard() ? state.shortId : '';
+  if (key === 'layerId' || key === 'belowLayerId') return state.selectedId ?? state.layers[0]?.id ?? '';
+  if (key === 'layerIds') return state.selectedId != null ? [state.selectedId] : [];
+  if (key === 'order') return state.layers.map(l => l.id);
+  if (key === 'x') return Math.round(v.x + v.w / 2);
+  if (key === 'y') return Math.round(v.y + v.h / 2);
+  if (key === 'w' || key === 'width') return state.bounds ? state.bounds.w : 400;
+  if (key === 'h' || key === 'height') return state.bounds ? state.bounds.h : 300;
+  if (key === 'color') return $('color').value;
+  if (key === 'size') return Number($('size').value);
+  if (key === 'channelName') return state.chat.channel;
+  if (key === 'documentId') return elementOf(state.selectedId)?.documentId ?? '';
+  if (key === 'threadId') return state.threads[0]?.threadId ?? '';
+  return '';
+}
+function renderVerbs(selected) {
+  const box = $('verbs');
+  const current = selected || $('verbSel')?.value || 'get_drawing';
+  const tool = state.tools.find(t => t.name === current) || state.tools[0]; if (!tool) return;
+  const p = tool.inputSchema?.properties || {}; const req = new Set(tool.inputSchema?.required || []);
+  // x and y are prefilled with the view's centre only where they place something; on
+  // resize_canvas they move the canvas origin, and the form leaves them for the user.
+  const field = (k, f) => {
+    const val = tool.name === 'resize_canvas' && (k === 'x' || k === 'y') ? '' : contextFor(k); const id = `arg_${k}`;
+    if (f.type === 'boolean') return `<label><input type="checkbox" id="${id}"> ${esc((f.description || '').slice(0, 60))}</label>`;
+    if (f.enum) return `<select id="${id}"><option value="">—</option>${f.enum.map(o => `<option>${esc(o)}</option>`).join('')}</select>`;
+    if (f.type === 'number') return `<input type="number" id="${id}" value="${esc(val)}" step="any" style="width:100%">`;
+    if (f.type === 'array' || f.type === 'object') return `<textarea id="${id}" rows="2" placeholder="JSON${f.items?.description ? ` — ${esc(f.items.description.slice(0, 120))}` : ''}">${val === '' ? '' : esc(JSON.stringify(val))}</textarea>`;
+    if (k === 'png' || k === 'data') return `<input type="file" id="${id}" accept="image/*">`;
+    if (k === 'content' || k === 'message' || k === 'text') return `<textarea id="${id}" rows="3">${esc(val)}</textarea>`;
+    return `<input type="text" id="${id}" value="${esc(val)}">`;
+  };
+  box.innerHTML = `<div class="actions"><select id="verbSel" style="flex:1">${state.tools.map(t => `<option ${t.name === tool.name ? 'selected' : ''}>${t.name}</option>`).join('')}</select></div>
+    <div class="muted" style="margin:4px 0 8px">${esc(tool.description)}</div>
+    <div class="form">${Object.entries(p).map(([k, f]) => `<label title="${esc(f.description || '')}">${esc(k)}${req.has(k) ? '<span class="req">*</span>' : ''}</label>${field(k, f)}`).join('')}</div>
+    <div class="actions"><button id="runVerb">run ${esc(tool.name)}</button><label><input type="checkbox" id="rereadBox" checked> re-read and capture after</label></div>
+    <pre class="result" id="verbOut" hidden></pre>`;
+  $('verbSel').onchange = () => renderVerbs($('verbSel').value);
+  $('runVerb').onclick = async () => {
+    const args = {};
+    for (const [k, f] of Object.entries(p)) {
+      const el = $(`arg_${k}`); if (!el) continue;
+      if (el.type === 'checkbox') { if (el.checked) args[k] = true; continue; }
+      if (el.type === 'file') { if (el.files[0]) args[k] = await fileToBase64(el.files[0]); continue; }
+      const raw = el.value; if (raw === '' || raw == null) continue;
+      if (f.type === 'number') args[k] = Number(raw);
+      else if (f.type === 'array' || f.type === 'object') { try { args[k] = JSON.parse(raw); } catch { return status(`${k}: not valid JSON`, true); } }
+      else args[k] = raw;
+    }
+    const out = $('verbOut'); out.hidden = false; out.textContent = 'running…';
+    const r = await act(tool.name, args, null, { reread: $('rereadBox').checked });
+    if (r === undefined) { out.textContent = $('status').textContent; return; }
+    const png = r?.png || (r?.mimeType && r?.data);
+    out.innerHTML = esc(JSON.stringify(png ? { ...r, png: undefined, data: undefined, image: `${(r.png || r.data).length} chars base64` } : r, null, 2)) + (png ? `<br><img src="data:${r.mimeType || 'image/png'};base64,${r.png || r.data}">` : '');
+  };
+}
+
+// ---- logs and coverage -----------------------------------------------------------------
+async function loadLog() {
+  const { verbs, gaps } = await api('/api/log');
+  $('verbLog').innerHTML = verbs.slice(-60).reverse().map(v => `<div><span class="${v.ok ? 'ok' : 'bad'}">${v.ok ? '✓' : '✗'}</span> ${v.name} <span class="muted">${v.ms} ms</span>${v.error ? ` <span class="bad">${esc(v.error)}</span>` : ''}</div>`).join('');
+  $('gapsLog').innerHTML = gaps.slice().reverse().map(g => `<div class="gapline">${esc(g.intent)} <span class="muted">on ${esc(g.element?.type)} #${esc(g.element?.id)}</span></div>`).join('') || '<span class="muted">none yet</span>';
+  renderCoverage(verbs);
+}
+// Where each verb is reached on this page; every verb is also reachable from the Verbs tab.
+const WHERE = {
+  list_drawings: 'left list', get_drawing: 'Selection · get_drawing info', open_drawing: 'opening a drawing', capture_drawing: 'the picture',
+  create_canvas: 'Layers · + canvas', create_layer: 'Layers · + layer', draw_shapes: 'toolbar · brush, eraser, line', paste_image: 'toolbar · paste image', reorder_layers: 'Layers · arrows',
+  copy_layer: 'Selection · copy pixels', duplicate_layer: 'Selection · duplicate', set_layer: 'Layers · eye, lock, name, opacity; Selection · blend, clip', undo_edit: 'header', redo_edit: 'header',
+  select_rect: 'toolbar · select rect', select_ellipse: 'toolbar · select ellipse', select_lasso: 'toolbar · lasso', select_all: 'toolbar · all', deselect: 'toolbar · none', invert_selection: 'toolbar · invert', delete_selection: 'toolbar · delete selected',
+  transform_layer: 'Selection · transform', apply_filter: 'Selection · filter', resize_canvas: 'Layers · resize canvas', draw_text: 'toolbar · text', pick_color: 'toolbar · eyedropper', list_brush_presets: 'toolbar · preset list',
+  draw_shape: 'toolbar · rectangle, ellipse', fill_area: 'toolbar · bucket', clear_layer: 'Selection · clear', merge_layer_down: 'Selection · merge down', trim_layer: 'Selection · trim', remove_layers: 'Selection · remove',
+  list_comments: 'Comments', add_comment: 'Selection · comment', reply_comment: 'Comments · reply', resolve_comment: 'Comments · resolve', read_document: 'Selection · document', write_document: 'Layers · + document; Selection · document',
+  create_ai_session: 'Chat · new session', send_message: 'Chat · send', create_section: 'Layers · + section', add_note: 'Layers · + note', place_card: 'Selection · place', move_board_object: 'Selection · place', edit_note: 'Selection · note',
+  list_board_elements: 'opening a board', undo_agent_edits: 'Chat · undo this turn', read_message_image: 'Chat · image buttons', get_messages: 'Chat · read',
+};
+function renderCoverage(verbs) {
+  const used = new Map(); for (const v of verbs) if (v.ok) used.set(v.name, (used.get(v.name) || 0) + 1);
+  const rows = state.tools.map(t => `<tr><td>${t.name}</td><td class="${WHERE[t.name] ? '' : 'no'}">${WHERE[t.name] || 'Verbs tab only'}</td><td class="${used.has(t.name) ? 'yes' : 'muted'}">${used.has(t.name) ? `used ×${used.get(t.name)}` : 'not yet'}</td></tr>`);
+  $('coverage').innerHTML = `<table class="tools">${rows.join('')}</table><div class="muted" style="margin-top:4px">${state.tools.length} verbs offered · ${used.size} used so far · ${state.tools.filter(t => !WHERE[t.name]).length} without a dedicated control</div>`;
+}
+
+(async () => {
+  state.tools = await api('/api/tools'); await loadDrawings(); draw(); loadLog(); renderChat(); renderVerbs(); loadPresets();
+  // A copied URL reopens the same drawing at the same region, with the same layer selected.
+  const wanted = viewFromUrl();
+  if (wanted) {
+    const row = state.rows.find(r => r.shortId === wanted.shortId) ?? { shortId: wanted.shortId, type: 'Board', name: wanted.shortId };
+    state.view = wanted.view;
+    await openDrawing(row, true, wanted.layer);
+  }
+})();
+</script>
+</body>
+</html>
