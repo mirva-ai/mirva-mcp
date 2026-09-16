@@ -61,9 +61,23 @@ try {
   // and every later edit of it fails, so the board cannot be trusted from a
   // capture alone. get_drawing refuses a removed entity, which is the only
   // signal for this available through the tools.
+  // The server throttles a key that calls too fast, and a board can hold
+  // hundreds of references. A throttled lookup is retried after a pause;
+  // only a refusal about the entity itself is a finding.
+  const lookup = async (drawingId: string) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await client.call('callTool', 'get_drawing', { shortId: drawingId });
+      } catch (e) {
+        const throttled = e instanceof Error && /too quickly/i.test(e.message);
+        if (!throttled || attempt >= 6) throw e;
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+      }
+    }
+  };
   for (const [drawingId, layers] of byDrawing) {
     try {
-      await client.call('callTool', 'get_drawing', { shortId: drawingId });
+      await lookup(drawingId);
     } catch (e) {
       // Only a refusal about this entity says anything about the board. A
       // worker outage refuses every call alike, and reading that as "every
@@ -71,7 +85,10 @@ try {
       // false findings about the board.
       if (isInfrastructureFailure(e)) throw e;
       const at = layers.map(l => `#${l.id} "${l.name}"`).join(' ');
-      problems.push(`${drawingId} is referenced by ${layers.length} layer(s) but no longer resolves: ${at}`);
+      // The refusal's own words are the evidence; without them a run that
+      // refused every entity for one unrelated reason reads as a wiped board.
+      const why = e instanceof Error ? e.message : String(e);
+      problems.push(`${drawingId} is referenced by ${layers.length} layer(s) but no longer resolves (${why}): ${at}`);
     }
   }
 

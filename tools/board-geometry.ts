@@ -74,5 +74,6 @@ export function groupByDrawing(elements: BoardElement[]): Map<string, BoardEleme
 export function isInfrastructureFailure(e: unknown): boolean {
   const name = e instanceof Error ? e.name : '';
   const message = e instanceof Error ? e.message : String(e);
-  return /HandsUnavailable|No hands workers|timed out|deadline|ECONNREFUSED|socket hang up/i.test(`${name} ${message}`);
+  // The server's throttle refuses a key that calls too fast; it says nothing about the entity asked for.
+  return /HandsUnavailable|No hands workers|timed out|deadline|ECONNREFUSED|socket hang up|too quickly/i.test(`${name} ${message}`);
 }

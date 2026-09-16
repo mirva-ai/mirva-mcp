@@ -116,6 +116,11 @@ check('a worker task timeout is infrastructure',
   isInfrastructureFailure(new Error('hands task timed out (capture_drawing)')), true);
 check('a refused connection is infrastructure',
   isInfrastructureFailure(new Error('connect ECONNREFUSED 127.0.0.1:4000')), true);
+// The server throttles a key that calls too fast, and the audit looks up
+// every referenced entity back to back. Read as a finding, one throttled
+// run reports every card on the board as deleted.
+check('a rate-limit refusal is infrastructure, not a missing entity',
+  isInfrastructureFailure(new Error('You are performing actions too quickly.')), true);
 
 // The other half matters as much: a real answer about one entity must stay
 // a finding, or the audit goes quiet about the fault it exists to catch.
