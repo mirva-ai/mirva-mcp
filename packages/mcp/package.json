@@ -1,9 +1,10 @@
 {
   "name": "@mirva/mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCP server for Mirva — drive boards and canvases with your own account.",
   "type": "module",
   "bin": {
+    "mcp": "bin/mirva-mcp.js",
     "mirva-mcp": "bin/mirva-mcp.js",
     "mirva-mcp-viewer": "bin/mirva-mcp-viewer.js"
   },
