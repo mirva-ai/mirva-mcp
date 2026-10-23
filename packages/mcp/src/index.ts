@@ -16,7 +16,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createRequire } from 'module';
-import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from './transport.ts';
+import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from '@mirva/sdk';
 
 const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
 const url = process.env.MIRVA_URL || 'https://mirva.ai';

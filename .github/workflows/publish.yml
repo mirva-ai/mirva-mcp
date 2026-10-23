@@ -1,0 +1,49 @@
+# Publishes a package to npm when its release tag is pushed: sdk-vX.Y.Z → @mirva/sdk, mcp-vX.Y.Z → @mirva/mcp.
+# Authenticates through npm trusted publishing (OIDC): each package names this repository and workflow as its trusted
+# publisher on npmjs.com, so the job holds no npm token and the release carries a provenance statement.
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'sdk-v*'
+      - 'mcp-v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # trusted publishing needs npm 11.5.1 or later
+      - run: npm install -g npm@latest
+
+      - name: Resolve the package from the tag
+        id: target
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in
+            sdk-v*) name=@mirva/sdk; dir=packages/sdk; version="${tag#sdk-v}" ;;
+            mcp-v*) name=@mirva/mcp; dir=packages/mcp; version="${tag#mcp-v}" ;;
+            *) echo "unknown tag $tag"; exit 1 ;;
+          esac
+          declared=$(node -p "require('./$dir/package.json').version")
+          if [ "$declared" != "$version" ]; then
+            echo "tag $tag names $version, $dir/package.json declares $declared"; exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - run: npm install --no-audit --no-fund
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm publish -w ${{ steps.target.outputs.name }} --access public

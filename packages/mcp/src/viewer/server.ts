@@ -12,7 +12,7 @@
  */
 import { readFileSync } from 'fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'http';
-import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from '../transport.ts';
+import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from '@mirva/sdk';
 
 /** The page, kept beside its README; the same path from the sources and from the build. */
 const pageUrl = new URL('../../viewer/index.html', import.meta.url);

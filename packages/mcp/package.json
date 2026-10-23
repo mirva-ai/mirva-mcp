@@ -1,0 +1,45 @@
+{
+  "name": "@mirva/mcp",
+  "version": "0.3.0",
+  "description": "MCP server for Mirva — drive boards and canvases with your own account.",
+  "type": "module",
+  "bin": {
+    "mirva-mcp": "bin/mirva-mcp.js",
+    "mirva-mcp-viewer": "bin/mirva-mcp-viewer.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "bin",
+    "dist",
+    "viewer/index.html",
+    "viewer/README.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mirva"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@mirva/sdk": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mirva-ai/mirva-mcp.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://github.com/mirva-ai/mirva-mcp/tree/main/packages/mcp#readme",
+  "bugs": {
+    "url": "https://github.com/mirva-ai/mirva-mcp/issues"
+  }
+}

@@ -5,7 +5,7 @@
  *
  *   MIRVA_URL=... MIRVA_API_KEY=... node tools/bench.ts <boardId> <canvasId> [repeat]
  */
-import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from '../src/transport.ts';
+import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from '../packages/sdk/src/index.ts';
 
 interface Run {
   ms: number;

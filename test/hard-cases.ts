@@ -15,7 +15,7 @@
  */
 
 import { readFileSync, statSync } from 'fs';
-import { credentialsFromEnv, errorMessage, isTextResult, MirvaClient } from '../src/transport.ts';
+import { credentialsFromEnv, errorMessage, isTextResult, MirvaClient } from '../packages/sdk/src/index.ts';
 
 const url = process.env.MIRVA_URL || 'http://localhost:8080';
 const credentials = credentialsFromEnv();

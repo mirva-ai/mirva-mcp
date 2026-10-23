@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    // the built server is compiled against the SDK as it is published (its declarations), not its source
+    "customConditions": []
+  },
+  "include": [
+    "src"
+  ]
+}

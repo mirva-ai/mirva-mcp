@@ -7,7 +7,7 @@
  *   MIRVA_URL=... MIRVA_API_KEY=... node tools/soak.ts <boardId> <x> <y> <w> <h> [rounds] [logFile]
  */
 import { appendFileSync } from 'fs';
-import { credentialsFromEnv, errorMessage, isImageResult, MirvaClient } from '../src/transport.ts';
+import { credentialsFromEnv, errorMessage, isImageResult, MirvaClient } from '../packages/sdk/src/index.ts';
 import type { Rect } from './board-geometry.ts';
 
 interface Region {

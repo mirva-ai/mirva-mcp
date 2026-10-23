@@ -7,8 +7,14 @@
  */
 
 import { RpcClient, type ClientTransportAdapter, type TransportClientConnection } from '@deepkit/rpc';
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import WebSocket, { type RawData } from 'ws';
+
+/** A tool the server offers: its name, what it does, and its arguments as a JSON Schema object. */
+export interface ToolDescriptor {
+  name: string;
+  description?: string;
+  inputSchema: { type: 'object'; properties?: Record<string, object>; required?: string[]; [key: string]: unknown };
+}
 
 /**
  * One of: a session token, sent as the AUTH_TOKEN cookie a browser session
@@ -52,7 +58,7 @@ export function isImageResult(result: unknown): result is ImageResult {
 
 /** The bridge controller's actions, as the server declares them. */
 export interface McpRemote {
-  listTools(): Promise<Tool[]>;
+  listTools(): Promise<ToolDescriptor[]>;
   toolsDigest(): Promise<string>;
   callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
 }

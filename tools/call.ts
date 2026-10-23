@@ -20,7 +20,7 @@
  *   IMAGE_OUT=... where an image result is written (default /tmp/capture.png)
  */
 import { readFileSync, writeFileSync } from 'fs';
-import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from '../src/transport.ts';
+import { credentialsFromEnv, errorMessage, isImageResult, isTextResult, MirvaClient } from '../packages/sdk/src/index.ts';
 
 const [tool, argsJson] = process.argv.slice(2);
 if (!tool) {

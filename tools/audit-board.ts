@@ -22,7 +22,7 @@
  * Usage:
  *   MIRVA_URL=... MIRVA_API_KEY=... node tools/audit-board.ts <boardId>
  */
-import { credentialsFromEnv, errorMessage, isTextResult, MirvaClient } from '../src/transport.ts';
+import { credentialsFromEnv, errorMessage, isTextResult, MirvaClient } from '../packages/sdk/src/index.ts';
 import { contains, groupByDrawing, isInfrastructureFailure, overlaps, type BoardElement } from './board-geometry.ts';
 
 const boardId = process.argv[2];
