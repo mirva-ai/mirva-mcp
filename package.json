@@ -12,7 +12,7 @@
   "scripts": {
     "build": "npm run build -w @mirva/sdk && npm run build -w @mirva/mcp",
     "check": "tsc -p tsconfig.json",
-    "test": "node test/board-geometry.ts",
+    "test": "node test/board-geometry.ts && node test/session.ts",
     "start": "node --conditions=source packages/mcp/src/index.ts",
     "viewer": "node --conditions=source packages/mcp/src/viewer/server.ts"
   },
